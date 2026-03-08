@@ -30,7 +30,7 @@ Coolify instance'larınızı **komple**, **proje bazlı** veya **seçici** olara
 
 ```bash
 # Repoyu klonlayın
-git clone https://github.com/YOUR_USER/CoolifyBR.git
+git clone https://github.com/oguzdelioglu/CoolifyBR.git
 cd CoolifyBR
 
 # Scriptleri çalıştırılabilir yapın

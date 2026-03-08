@@ -30,7 +30,7 @@ Back up your Coolify instances — **fully**, **per-project**, or **selectively*
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USER/CoolifyBR.git
+git clone https://github.com/oguzdelioglu/CoolifyBR.git
 cd CoolifyBR
 
 # Make scripts executable
