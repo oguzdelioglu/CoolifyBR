@@ -1,0 +1,19 @@
+# Backups
+backups/
+*.tar.gz
+
+# Local config
+config.local.env
+
+# Temp files
+/tmp/
+*.tmp
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
