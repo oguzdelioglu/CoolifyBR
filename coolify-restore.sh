@@ -108,11 +108,17 @@ extract_backup() {
     TEMP_DIR=$(create_temp_dir "coolify-restore")
     log_substep "Temp directory: $TEMP_DIR"
 
-    if tar xzf "$archive" -C "$TEMP_DIR" 2>/dev/null; then
+    local tar_err
+    tar_err=$(mktemp)
+    if tar xzf "$archive" -C "$TEMP_DIR" 2>"$tar_err"; then
         log_success "Archive extracted"
     else
-        die "Failed to extract backup archive"
+        local err_msg
+        err_msg=$(cat "$tar_err" 2>/dev/null)
+        rm -f "$tar_err"
+        die "Failed to extract backup archive${err_msg:+: $err_msg}"
     fi
+    rm -f "$tar_err"
 
     # Find the backup root (could be nested in a directory)
     local manifest
