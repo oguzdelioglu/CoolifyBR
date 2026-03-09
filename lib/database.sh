@@ -257,10 +257,10 @@ db_restore_project_data() {
     local modified_export
     modified_export=$(mktemp /tmp/coolify-export-XXXXXX.json)
     jq --argjson tid "$target_team_id" '
-        .project.team_id = $tid |
-        if .environments then .environments |= map(.team_id = $tid // .team_id) else . end |
-        if .applications then .applications |= map(.team_id = $tid // .team_id) else . end |
-        if .services then .services |= map(.team_id = $tid // .team_id) else . end
+        if .project and (.project | has("team_id")) then .project.team_id = $tid else . end |
+        if .environments then .environments |= map(if has("team_id") then .team_id = $tid else . end) else . end |
+        if .applications then .applications |= map(if has("team_id") then .team_id = $tid else . end) else . end |
+        if .services then .services |= map(if has("team_id") then .team_id = $tid else . end) else . end
     ' "$export_file" > "$modified_export" 2>/dev/null || cp "$export_file" "$modified_export"
 
     # Check if project already exists (by uuid)
