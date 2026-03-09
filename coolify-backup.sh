@@ -164,9 +164,15 @@ select_projects() {
             project_list+=("$uuid|$uuid|$name")
         else
             # DB format: id, uuid, name, description, env_count
-            local display_desc="${desc:-N/A}"
-            [[ ${#display_desc} -gt 40 ]] && display_desc="${display_desc:0:40}..."
-            print_menu_item "$i" "$name" "$display_desc (${env_count} env(s))"
+            local display_info=""
+            if [[ -n "$desc" ]]; then
+                local display_desc="$desc"
+                [[ ${#display_desc} -gt 40 ]] && display_desc="${display_desc:0:40}..."
+                display_info="$display_desc (${env_count:-0} env(s))"
+            else
+                display_info="${env_count:-0} env(s)"
+            fi
+            print_menu_item "$i" "$name" "$display_info"
             project_list+=("$id|$uuid|$name")
         fi
         ((i++))
@@ -183,6 +189,7 @@ select_projects() {
         IFS=',' read -ra selected_indices <<< "$selections"
         for idx in "${selected_indices[@]}"; do
             idx=$(echo "$idx" | tr -d ' ')
+            [[ "$idx" =~ ^[0-9]+$ ]] || continue
             if [[ $idx -ge 1 && $idx -le $max ]]; then
                 local entry="${project_list[$((idx - 1))]}"
                 local proj_id proj_uuid proj_name
@@ -233,6 +240,7 @@ select_resources() {
     IFS=',' read -ra selected_indices <<< "$selections"
     for idx in "${selected_indices[@]}"; do
         idx=$(echo "$idx" | tr -d ' ')
+        [[ "$idx" =~ ^[0-9]+$ ]] || continue
         if [[ $idx -ge 1 && $idx -le $max ]]; then
             SELECTED_CONTAINERS+=("${container_list[$((idx - 1))]}")
         fi

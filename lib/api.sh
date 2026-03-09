@@ -295,7 +295,7 @@ discover_all_volumes() {
 # Query Coolify's PostgreSQL for project/resource info
 db_discover_projects() {
     docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A -F $'\t' \
-        -c "SELECT p.id, p.uuid, p.name, p.description, COUNT(DISTINCT e.id) as env_count
+        -c "SELECT p.id, p.uuid, p.name, COALESCE(p.description, ''), COUNT(DISTINCT e.id) as env_count
             FROM projects p
             LEFT JOIN environments e ON e.project_id = p.id
             GROUP BY p.id, p.uuid, p.name, p.description

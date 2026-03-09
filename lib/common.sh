@@ -242,7 +242,7 @@ prompt_yes_no() {
     local hint="[Y/n]"
     [[ "$default" == "n" ]] && hint="[y/N]"
 
-    echo -ne "${YELLOW}${question} ${hint}: ${NC}"
+    echo -ne "${YELLOW}${question} ${hint}: ${NC}" >&2
     read -r answer
     answer="${answer:-$default}"
     [[ "$answer" =~ ^[Yy] ]]
@@ -254,13 +254,13 @@ prompt_selection() {
     local selection
 
     while true; do
-        echo -ne "\n${YELLOW}${prompt_text} (1-${max}): ${NC}"
+        echo -ne "\n${YELLOW}${prompt_text} (1-${max}): ${NC}" >&2
         read -r selection
         if [[ "$selection" =~ ^[0-9]+$ ]] && [[ "$selection" -ge 1 ]] && [[ "$selection" -le "$max" ]]; then
             echo "$selection"
             return 0
         fi
-        log_error "Invalid selection. Please enter a number between 1 and $max."
+        log_error "Invalid selection. Please enter a number between 1 and $max." >&2
     done
 }
 
@@ -268,7 +268,7 @@ prompt_multi_selection() {
     local prompt_text="$1"
     local max="$2"
 
-    echo -ne "\n${YELLOW}${prompt_text} (comma-separated, e.g. 1,3,5 or 'all'): ${NC}"
+    echo -ne "\n${YELLOW}${prompt_text} (comma-separated, e.g. 1,3,5 or 'all'): ${NC}" >&2
     read -r input
 
     if [[ "$input" == "all" ]]; then
