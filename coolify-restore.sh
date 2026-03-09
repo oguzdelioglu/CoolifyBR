@@ -228,7 +228,7 @@ restart_coolify() {
     local running=0
     for container in "${COOLIFY_CONTAINERS[@]}"; do
         if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-            ((running++))
+            running=$((running + 1))
         fi
     done
 

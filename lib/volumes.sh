@@ -91,9 +91,9 @@ volume_backup_multiple() {
         local result
         if result=$(volume_backup "$vol" "$output_dir"); then
             backup_files+=("$result")
-            ((backed_up++))
+            backed_up=$((backed_up + 1))
         else
-            ((failed++))
+            failed=$((failed + 1))
         fi
     done
 
@@ -344,9 +344,9 @@ volume_restore_all() {
 
     while IFS= read -r backup_file; do
         if volume_restore "$backup_file"; then
-            ((restored++))
+            restored=$((restored + 1))
         else
-            ((failed++))
+            failed=$((failed + 1))
         fi
     done <<< "$backup_files"
 

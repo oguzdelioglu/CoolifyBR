@@ -19,7 +19,7 @@ ssh_backup_keys() {
         for key_file in "$COOLIFY_SSH_DIR"/*; do
             if [[ -f "$key_file" ]]; then
                 cp -p "$key_file" "$keys_dir/"
-                ((key_count++))
+                key_count=$((key_count + 1))
             fi
         done
         if [[ $key_count -gt 0 ]]; then
@@ -140,7 +140,7 @@ ssh_restore_keys() {
         if [[ -f "$key_file" ]]; then
             cp -p "$key_file" "$COOLIFY_SSH_DIR/"
             chmod 600 "$COOLIFY_SSH_DIR/$(basename "$key_file")"
-            ((restored++))
+            restored=$((restored + 1))
         fi
     done
 
