@@ -178,7 +178,7 @@ select_projects() {
         ((i++))
     done <<< "$projects"
 
-    echo ""
+    echo "" >&2
     local max=$((i - 1))
 
     if [[ "$MODE" == "project" ]]; then
@@ -231,7 +231,7 @@ select_resources() {
         ((i++))
     done <<< "$containers"
 
-    echo ""
+    echo "" >&2
     local max=$((i - 1))
     local selections
     selections=$(prompt_multi_selection "Select containers to backup volumes for" "$max")

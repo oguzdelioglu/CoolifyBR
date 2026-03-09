@@ -21,15 +21,15 @@ NC='\033[0m'
 # Logging Functions
 # ============================================================
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $*"
+    echo -e "${BLUE}[INFO]${NC} $*" >&2
 }
 
 log_success() {
-    echo -e "${GREEN}[OK]${NC} $*"
+    echo -e "${GREEN}[OK]${NC} $*" >&2
 }
 
 log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $*"
+    echo -e "${YELLOW}[WARN]${NC} $*" >&2
 }
 
 log_error() {
@@ -37,21 +37,21 @@ log_error() {
 }
 
 log_step() {
-    echo -e "\n${CYAN}${BOLD}>> $*${NC}"
+    echo -e "\n${CYAN}${BOLD}>> $*${NC}" >&2
 }
 
 log_substep() {
-    echo -e "   ${DIM}→${NC} $*"
+    echo -e "   ${DIM}→${NC} $*" >&2
 }
 
 log_header() {
     local text="$1"
     local width=60
-    echo ""
-    echo -e "${MAGENTA}${BOLD}$(printf '═%.0s' $(seq 1 $width))${NC}"
-    echo -e "${MAGENTA}${BOLD}  $text${NC}"
-    echo -e "${MAGENTA}${BOLD}$(printf '═%.0s' $(seq 1 $width))${NC}"
-    echo ""
+    echo "" >&2
+    echo -e "${MAGENTA}${BOLD}$(printf '═%.0s' $(seq 1 $width))${NC}" >&2
+    echo -e "${MAGENTA}${BOLD}  $text${NC}" >&2
+    echo -e "${MAGENTA}${BOLD}$(printf '═%.0s' $(seq 1 $width))${NC}" >&2
+    echo "" >&2
 }
 
 # ============================================================
@@ -219,10 +219,10 @@ update_manifest() {
 # ============================================================
 print_menu_header() {
     local title="$1"
-    echo ""
-    echo -e "${CYAN}${BOLD}┌─────────────────────────────────────────────────┐${NC}"
-    echo -e "${CYAN}${BOLD}│  $title$(printf '%*s' $((46 - ${#title})) '')│${NC}"
-    echo -e "${CYAN}${BOLD}└─────────────────────────────────────────────────┘${NC}"
+    echo "" >&2
+    echo -e "${CYAN}${BOLD}┌─────────────────────────────────────────────────┐${NC}" >&2
+    echo -e "${CYAN}${BOLD}│  $title$(printf '%*s' $((46 - ${#title})) '')│${NC}" >&2
+    echo -e "${CYAN}${BOLD}└─────────────────────────────────────────────────┘${NC}" >&2
 }
 
 print_menu_item() {
@@ -230,9 +230,9 @@ print_menu_item() {
     local label="$2"
     local desc="${3:-}"
     if [[ -n "$desc" ]]; then
-        echo -e "  ${BOLD}${num})${NC} ${label} ${DIM}— ${desc}${NC}"
+        echo -e "  ${BOLD}${num})${NC} ${label} ${DIM}— ${desc}${NC}" >&2
     else
-        echo -e "  ${BOLD}${num})${NC} ${label}"
+        echo -e "  ${BOLD}${num})${NC} ${label}" >&2
     fi
 }
 

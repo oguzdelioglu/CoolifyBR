@@ -116,7 +116,7 @@ extract_backup() {
 
     # Find the backup root (could be nested in a directory)
     local manifest
-    manifest=$(find "$TEMP_DIR" -name "manifest.json" -maxdepth 2 | head -1)
+    manifest=$(find "$TEMP_DIR" -maxdepth 2 -name "manifest.json" 2>/dev/null | head -1 || true)
 
     if [[ -z "$manifest" ]]; then
         die "No manifest.json found in archive. Is this a valid CoolifyBR backup?"
@@ -148,25 +148,25 @@ read_manifest() {
     timestamp=$(jq -r '.timestamp // "unknown"' "$manifest_file")
     hostname=$(jq -r '.hostname // "unknown"' "$manifest_file")
 
-    echo ""
-    echo -e "  ${BOLD}Tool:${NC}            $tool v$version"
-    echo -e "  ${BOLD}Backup Mode:${NC}     $mode"
-    echo -e "  ${BOLD}Coolify Version:${NC} $coolify_ver"
-    echo -e "  ${BOLD}Created:${NC}         $timestamp"
-    echo -e "  ${BOLD}Source Host:${NC}     $hostname"
-    echo ""
+    echo "" >&2
+    echo -e "  ${BOLD}Tool:${NC}            $tool v$version" >&2
+    echo -e "  ${BOLD}Backup Mode:${NC}     $mode" >&2
+    echo -e "  ${BOLD}Coolify Version:${NC} $coolify_ver" >&2
+    echo -e "  ${BOLD}Created:${NC}         $timestamp" >&2
+    echo -e "  ${BOLD}Source Host:${NC}     $hostname" >&2
+    echo "" >&2
 
     # Show components
     local components
     components=$(jq -r '.components | keys[]' "$manifest_file" 2>/dev/null || echo "")
     if [[ -n "$components" ]]; then
-        echo -e "  ${BOLD}Components:${NC}"
+        echo -e "  ${BOLD}Components:${NC}" >&2
         while IFS= read -r comp; do
             local comp_info
             comp_info=$(jq -r ".components.${comp}" "$manifest_file" 2>/dev/null)
-            echo -e "    ${GREEN}+${NC} $comp: $comp_info"
+            echo -e "    ${GREEN}+${NC} $comp: $comp_info" >&2
         done <<< "$components"
-        echo ""
+        echo "" >&2
     fi
 
     # Return backup mode
@@ -208,17 +208,21 @@ restart_coolify() {
 
     log_step "Restarting Coolify"
 
-    # Try using the install script for a clean restart
+    # Flush Redis cache so Coolify picks up database changes
+    log_substep "Flushing Redis cache..."
+    docker exec coolify-redis redis-cli FLUSHALL &>/dev/null || true
+
+    # Force-restart Coolify containers (not just 'up -d' which skips running ones)
     if [[ -f "/data/coolify/source/docker-compose.yml" ]]; then
         log_substep "Restarting via docker compose..."
-        (cd /data/coolify/source && docker compose up -d) &>/dev/null || true
+        (cd /data/coolify/source && docker compose restart) &>/dev/null || true
     else
         # Fallback: restart individual containers
         for container in "${COOLIFY_CONTAINERS[@]}"; do
-            docker start "$container" &>/dev/null || true
+            docker restart "$container" &>/dev/null || true
         done
         # Also restart proxy
-        docker start coolify-proxy &>/dev/null || true
+        docker restart coolify-proxy &>/dev/null || true
     fi
 
     log_substep "Waiting for containers to start..."
@@ -350,7 +354,7 @@ restore_project() {
         ((i++))
     done <<< "$project_files"
 
-    echo ""
+    echo "" >&2
     local max=$((i - 1))
 
     if [[ "$NON_INTERACTIVE" == true ]]; then
@@ -365,6 +369,7 @@ restore_project() {
         IFS=',' read -ra selected_indices <<< "$selections"
         for idx in "${selected_indices[@]}"; do
             idx=$(echo "$idx" | tr -d ' ')
+            [[ "$idx" =~ ^[0-9]+$ ]] || continue
             if [[ $idx -ge 1 && $idx -le $max ]]; then
                 db_restore_project_data "${project_list[$((idx - 1))]}"
             fi

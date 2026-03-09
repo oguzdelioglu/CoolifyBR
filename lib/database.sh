@@ -240,27 +240,75 @@ db_restore_project_data() {
     fi
 
     # Read project info
-    local project_name
+    local project_name project_uuid
     project_name=$(jq -r '.project.name' "$export_file")
-    log_info "Restoring project: $project_name"
+    project_uuid=$(jq -r '.project.uuid' "$export_file")
+    log_info "Restoring project: $project_name (UUID: $project_uuid)"
 
-    # Check if project already exists
+    # Get target server's team_id (Root Team)
+    local target_team_id
+    target_team_id=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
+        -c "SELECT id FROM teams ORDER BY id LIMIT 1;" 2>/dev/null || echo "0")
+    target_team_id=$(echo "$target_team_id" | tr -d '[:space:]')
+    [[ -z "$target_team_id" ]] && target_team_id="0"
+    log_substep "Target team_id: $target_team_id"
+
+    # Remap team_id in the export data to target server's team
+    local modified_export
+    modified_export=$(mktemp /tmp/coolify-export-XXXXXX.json)
+    jq --argjson tid "$target_team_id" '
+        .project.team_id = $tid |
+        if .environments then .environments |= map(.team_id = $tid // .team_id) else . end |
+        if .applications then .applications |= map(.team_id = $tid // .team_id) else . end |
+        if .services then .services |= map(.team_id = $tid // .team_id) else . end
+    ' "$export_file" > "$modified_export" 2>/dev/null || cp "$export_file" "$modified_export"
+
+    # Check if project already exists (by uuid)
     local existing_project
     existing_project=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
-        -c "SELECT id FROM projects WHERE uuid = '$(jq -r '.project.uuid' "$export_file")';" 2>/dev/null)
+        -c "SELECT id FROM projects WHERE uuid = '$project_uuid';" 2>/dev/null || true)
+    existing_project=$(echo "$existing_project" | tr -d '[:space:]')
 
     if [[ -n "$existing_project" ]]; then
         log_warn "Project '$project_name' already exists (ID: $existing_project)"
         if ! prompt_yes_no "Overwrite existing project data?" "n"; then
             log_info "Skipping project restore"
+            rm -f "$modified_export"
             return 0
         fi
-        # Delete existing project data (cascade)
+        # Delete existing project data (cascade will remove environments, apps, etc.)
         docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" \
-            -c "DELETE FROM projects WHERE id = $existing_project;" &>/dev/null
+            -c "DELETE FROM projects WHERE id = $existing_project;" &>/dev/null || true
+        log_substep "Deleted existing project data"
     fi
 
-    # Build and execute SQL insert statements
+    # Also check for id conflict (different project using same numeric id)
+    local source_id
+    source_id=$(jq -r '.project.id' "$modified_export")
+    local id_conflict
+    id_conflict=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
+        -c "SELECT uuid FROM projects WHERE id = $source_id;" 2>/dev/null || true)
+    id_conflict=$(echo "$id_conflict" | tr -d '[:space:]')
+
+    if [[ -n "$id_conflict" && "$id_conflict" != "$project_uuid" ]]; then
+        log_warn "ID $source_id is used by another project, will let PostgreSQL assign new ID"
+        # Remove id from project and all related records to let PG auto-assign
+        # We need to use a different approach: insert without id, get new id, remap
+        local new_id
+        new_id=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
+            -c "SELECT COALESCE(MAX(id), 0) + 1 FROM projects;" 2>/dev/null || true)
+        new_id=$(echo "$new_id" | tr -d '[:space:]')
+        [[ -z "$new_id" ]] && new_id="1000"
+        log_substep "Remapping project ID: $source_id -> $new_id"
+
+        # Remap IDs in the modified export
+        jq --argjson old_id "$source_id" --argjson new_id "$new_id" '
+            .project.id = $new_id |
+            if .environments then .environments |= map(if .project_id == $old_id then .project_id = $new_id else . end) else . end
+        ' "$modified_export" > "${modified_export}.tmp" && mv "${modified_export}.tmp" "$modified_export"
+    fi
+
+    # Build SQL insert statements
     local sql_file
     sql_file=$(mktemp /tmp/coolify-restore-XXXXXX.sql)
 
@@ -268,97 +316,121 @@ db_restore_project_data() {
 
     # Insert project
     local project_json
-    project_json=$(jq -c '.project' "$export_file")
+    project_json=$(jq -c '.project' "$modified_export")
     _generate_insert_sql "projects" "$project_json" >> "$sql_file"
 
     # Insert environments
     local env_count
-    env_count=$(jq '.environments | length // 0' "$export_file")
+    env_count=$(jq '.environments | length // 0' "$modified_export")
     for ((i = 0; i < env_count; i++)); do
         local env_json
-        env_json=$(jq -c ".environments[$i]" "$export_file")
+        env_json=$(jq -c ".environments[$i]" "$modified_export")
         _generate_insert_sql "environments" "$env_json" >> "$sql_file"
     done
 
     # Insert applications
     local app_count
-    app_count=$(jq '.applications | length // 0' "$export_file")
+    app_count=$(jq '.applications | length // 0' "$modified_export")
     for ((i = 0; i < app_count; i++)); do
         local app_json
-        app_json=$(jq -c ".applications[$i]" "$export_file")
+        app_json=$(jq -c ".applications[$i]" "$modified_export")
         _generate_insert_sql "applications" "$app_json" >> "$sql_file"
     done
 
     # Insert application settings
     local settings_count
-    settings_count=$(jq '.application_settings | length // 0' "$export_file")
+    settings_count=$(jq '.application_settings | length // 0' "$modified_export")
     for ((i = 0; i < settings_count; i++)); do
         local settings_json
-        settings_json=$(jq -c ".application_settings[$i]" "$export_file")
+        settings_json=$(jq -c ".application_settings[$i]" "$modified_export")
         _generate_insert_sql "application_settings" "$settings_json" >> "$sql_file"
     done
 
     # Insert environment variables
     local ev_count
-    ev_count=$(jq '.environment_variables | length // 0' "$export_file")
+    ev_count=$(jq '.environment_variables | length // 0' "$modified_export")
     for ((i = 0; i < ev_count; i++)); do
         local ev_json
-        ev_json=$(jq -c ".environment_variables[$i]" "$export_file")
+        ev_json=$(jq -c ".environment_variables[$i]" "$modified_export")
         _generate_insert_sql "environment_variables" "$ev_json" >> "$sql_file"
     done
 
     # Insert databases (all types)
-    for table in $(jq -r '.databases | keys[]' "$export_file" 2>/dev/null); do
+    for table in $(jq -r '.databases | keys[]' "$modified_export" 2>/dev/null || true); do
         local db_count
-        db_count=$(jq ".databases.\"$table\" | length // 0" "$export_file")
+        db_count=$(jq ".databases.\"$table\" | length // 0" "$modified_export")
         for ((i = 0; i < db_count; i++)); do
             local db_json
-            db_json=$(jq -c ".databases.\"$table\"[$i]" "$export_file")
+            db_json=$(jq -c ".databases.\"$table\"[$i]" "$modified_export")
             _generate_insert_sql "$table" "$db_json" >> "$sql_file"
         done
     done
 
     # Insert services
     local svc_count
-    svc_count=$(jq '.services | length // 0' "$export_file")
+    svc_count=$(jq '.services | length // 0' "$modified_export")
     for ((i = 0; i < svc_count; i++)); do
         local svc_json
-        svc_json=$(jq -c ".services[$i]" "$export_file")
+        svc_json=$(jq -c ".services[$i]" "$modified_export")
         _generate_insert_sql "services" "$svc_json" >> "$sql_file"
     done
 
     # Insert service applications
     local sa_count
-    sa_count=$(jq '.service_applications | length // 0' "$export_file")
+    sa_count=$(jq '.service_applications | length // 0' "$modified_export")
     for ((i = 0; i < sa_count; i++)); do
         local sa_json
-        sa_json=$(jq -c ".service_applications[$i]" "$export_file")
+        sa_json=$(jq -c ".service_applications[$i]" "$modified_export")
         _generate_insert_sql "service_applications" "$sa_json" >> "$sql_file"
     done
 
     # Insert service databases
     local sd_count
-    sd_count=$(jq '.service_databases | length // 0' "$export_file")
+    sd_count=$(jq '.service_databases | length // 0' "$modified_export")
     for ((i = 0; i < sd_count; i++)); do
         local sd_json
-        sd_json=$(jq -c ".service_databases[$i]" "$export_file")
+        sd_json=$(jq -c ".service_databases[$i]" "$modified_export")
         _generate_insert_sql "service_databases" "$sd_json" >> "$sql_file"
     done
 
+    # Update sequences after inserts
+    echo "SELECT setval(pg_get_serial_sequence('projects', 'id'), COALESCE(MAX(id), 1)) FROM projects;" >> "$sql_file"
+    echo "SELECT setval(pg_get_serial_sequence('environments', 'id'), COALESCE(MAX(id), 1)) FROM environments;" >> "$sql_file"
+    echo "SELECT setval(pg_get_serial_sequence('applications', 'id'), COALESCE(MAX(id), 1)) FROM applications;" >> "$sql_file"
+
     echo "COMMIT;" >> "$sql_file"
 
-    # Execute SQL
+    # Execute SQL (capture errors)
     log_substep "Executing restore SQL..."
-    cat "$sql_file" | docker exec -i "$COOLIFY_DB_CONTAINER" \
-        psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" &>/dev/null
+    local sql_output
+    sql_output=$(cat "$sql_file" | docker exec -i "$COOLIFY_DB_CONTAINER" \
+        psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" 2>&1 || true)
 
-    if [[ $? -eq 0 ]]; then
-        log_success "Project '$project_name' restored to database"
-    else
-        log_warn "Some SQL statements may have failed (this can be normal for existing constraints)"
+    # Check for errors in output
+    if echo "$sql_output" | grep -qi "error" 2>/dev/null; then
+        log_warn "SQL errors detected during restore:"
+        echo "$sql_output" | grep -i "error" | head -5 | while IFS= read -r line; do
+            log_warn "  $line"
+        done
     fi
 
-    rm -f "$sql_file"
+    # Verify the project was actually inserted
+    local verify
+    verify=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
+        -c "SELECT id FROM projects WHERE uuid = '$project_uuid';" 2>/dev/null || true)
+    verify=$(echo "$verify" | tr -d '[:space:]')
+
+    if [[ -n "$verify" ]]; then
+        log_success "Project '$project_name' restored to database (ID: $verify)"
+    else
+        log_error "Project '$project_name' was NOT inserted into database"
+        log_error "Run with SQL debug: cat $sql_file"
+        # Don't delete sql_file for debugging
+        rm -f "$modified_export"
+        return 1
+    fi
+
+    rm -f "$sql_file" "$modified_export"
 }
 
 # ============================================================
