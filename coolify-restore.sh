@@ -95,6 +95,11 @@ parse_args() {
     if [[ ! -f "$BACKUP_FILE" ]]; then
         die "Backup file not found: $BACKUP_FILE"
     fi
+
+    # Resolve to absolute path (relative paths break inside subshells)
+    if [[ "$BACKUP_FILE" != /* ]]; then
+        BACKUP_FILE="$(cd "$(dirname "$BACKUP_FILE")" && pwd)/$(basename "$BACKUP_FILE")"
+    fi
 }
 
 # ============================================================
@@ -103,7 +108,13 @@ parse_args() {
 extract_backup() {
     local archive="$1"
 
+    # Resolve to absolute path
+    if [[ "$archive" != /* ]]; then
+        archive="$(cd "$(dirname "$archive")" && pwd)/$(basename "$archive")"
+    fi
+
     log_step "Extracting backup archive"
+    log_substep "Archive: $archive ($(stat -c%s "$archive" 2>/dev/null || stat -f%z "$archive" 2>/dev/null || echo '?') bytes)"
 
     TEMP_DIR=$(create_temp_dir "coolify-restore")
     log_substep "Temp directory: $TEMP_DIR"
