@@ -444,10 +444,10 @@ _generate_insert_sql() {
         return
     fi
 
-    # Extract columns and values from JSON
+    # Extract columns and values from JSON using to_entries to keep them paired
     local columns values
-    columns=$(echo "$json" | jq -r 'keys | join(",")')
-    values=$(echo "$json" | jq -r '[.[] | if type == "null" then "NULL" elif type == "string" then ("'"'"'" + (gsub("'"'"'"; "'"'"''"'"'") ) + "'"'"'") elif type == "object" or type == "array" then ("'"'"'" + (tostring | gsub("'"'"'"; "'"'"''"'"'")) + "'"'"'") else tostring end] | join(",")')
+    columns=$(echo "$json" | jq -r '[to_entries[].key] | join(",")')
+    values=$(echo "$json" | jq -r '[to_entries[].value | if type == "null" then "NULL" elif type == "string" then ("'"'"'" + (gsub("'"'"'"; "'"'"''"'"'") ) + "'"'"'") elif type == "object" or type == "array" then ("'"'"'" + (tostring | gsub("'"'"'"; "'"'"''"'"'")) + "'"'"'") else tostring end] | join(",")')
 
     echo "INSERT INTO $table ($columns) VALUES ($values) ON CONFLICT DO NOTHING;"
 }
