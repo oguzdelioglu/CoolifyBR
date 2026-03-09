@@ -63,20 +63,37 @@ db_export_project_data() {
 
     log_step "Exporting project data (ID: $project_id)"
 
+    # Helper: run psql and return result or empty string
+    _psql_query() {
+        docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
+            -c "$1" 2>/dev/null || true
+    }
+
+    # Helper: ensure value is valid JSON or return "null"
+    _ensure_json() {
+        local val="$1"
+        if [[ -z "$val" || "$val" == "null" ]]; then
+            echo "null"
+        elif echo "$val" | jq empty 2>/dev/null; then
+            echo "$val"
+        else
+            echo "null"
+        fi
+    }
+
     # Export project record
     local project_data
-    project_data=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
-        -c "SELECT row_to_json(p) FROM projects p WHERE p.id = $project_id;" 2>/dev/null)
+    project_data=$(_psql_query "SELECT row_to_json(p) FROM projects p WHERE p.id = $project_id;")
+    project_data=$(_ensure_json "$project_data")
 
     # Export environments
     local environments_data
-    environments_data=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
-        -c "SELECT json_agg(row_to_json(e)) FROM environments e WHERE e.project_id = $project_id;" 2>/dev/null)
+    environments_data=$(_psql_query "SELECT json_agg(row_to_json(e)) FROM environments e WHERE e.project_id = $project_id;")
+    environments_data=$(_ensure_json "$environments_data")
 
     # Get environment IDs for this project
     local env_ids
-    env_ids=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
-        -c "SELECT string_agg(id::text, ',') FROM environments WHERE project_id = $project_id;" 2>/dev/null)
+    env_ids=$(_psql_query "SELECT string_agg(id::text, ',') FROM environments WHERE project_id = $project_id;")
 
     if [[ -z "$env_ids" || "$env_ids" == "null" ]]; then
         log_warn "No environments found for project $project_id"
@@ -85,25 +102,21 @@ db_export_project_data() {
 
     # Export applications
     local applications_data
-    applications_data=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
-        -c "SELECT json_agg(row_to_json(a)) FROM applications a WHERE a.environment_id IN ($env_ids);" 2>/dev/null)
+    applications_data=$(_psql_query "SELECT json_agg(row_to_json(a)) FROM applications a WHERE a.environment_id IN ($env_ids);")
+    applications_data=$(_ensure_json "$applications_data")
 
     # Export application settings
     local app_ids
-    app_ids=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
-        -c "SELECT string_agg(id::text, ',') FROM applications WHERE environment_id IN ($env_ids);" 2>/dev/null)
+    app_ids=$(_psql_query "SELECT string_agg(id::text, ',') FROM applications WHERE environment_id IN ($env_ids);")
 
-    local app_settings_data=""
+    local app_settings_data="null"
+    local env_vars_data="null"
     if [[ -n "$app_ids" && "$app_ids" != "null" ]]; then
-        app_settings_data=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
-            -c "SELECT json_agg(row_to_json(s)) FROM application_settings s WHERE s.application_id IN ($app_ids);" 2>/dev/null)
-    fi
+        app_settings_data=$(_psql_query "SELECT json_agg(row_to_json(s)) FROM application_settings s WHERE s.application_id IN ($app_ids);")
+        app_settings_data=$(_ensure_json "$app_settings_data")
 
-    # Export environment variables for applications
-    local env_vars_data=""
-    if [[ -n "$app_ids" && "$app_ids" != "null" ]]; then
-        env_vars_data=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
-            -c "SELECT json_agg(row_to_json(ev)) FROM environment_variables ev WHERE ev.application_id IN ($app_ids);" 2>/dev/null)
+        env_vars_data=$(_psql_query "SELECT json_agg(row_to_json(ev)) FROM environment_variables ev WHERE ev.application_id IN ($app_ids);")
+        env_vars_data=$(_ensure_json "$env_vars_data")
     fi
 
     # Export standalone databases (all types)
@@ -112,43 +125,43 @@ db_export_project_data() {
 
     for table in "${db_tables[@]}"; do
         local table_data
-        table_data=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
-            -c "SELECT json_agg(row_to_json(d)) FROM $table d WHERE d.environment_id IN ($env_ids);" 2>/dev/null || echo "null")
-        if [[ "$table_data" != "null" && -n "$table_data" ]]; then
-            databases_data=$(echo "$databases_data" | jq --arg key "$table" --argjson val "$table_data" '. + {($key): $val}')
+        table_data=$(_psql_query "SELECT json_agg(row_to_json(d)) FROM $table d WHERE d.environment_id IN ($env_ids);")
+        table_data=$(_ensure_json "$table_data")
+        if [[ "$table_data" != "null" ]]; then
+            databases_data=$(echo "$databases_data" | jq --arg key "$table" --argjson val "$table_data" '. + {($key): $val}' 2>/dev/null || echo "$databases_data")
         fi
     done
 
     # Export services
     local services_data
-    services_data=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
-        -c "SELECT json_agg(row_to_json(s)) FROM services s WHERE s.environment_id IN ($env_ids);" 2>/dev/null)
+    services_data=$(_psql_query "SELECT json_agg(row_to_json(s)) FROM services s WHERE s.environment_id IN ($env_ids);")
+    services_data=$(_ensure_json "$services_data")
 
     # Export service applications and databases
     local svc_ids
-    svc_ids=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
-        -c "SELECT string_agg(id::text, ',') FROM services WHERE environment_id IN ($env_ids);" 2>/dev/null)
+    svc_ids=$(_psql_query "SELECT string_agg(id::text, ',') FROM services WHERE environment_id IN ($env_ids);")
 
-    local service_apps_data=""
-    local service_dbs_data=""
+    local service_apps_data="null"
+    local service_dbs_data="null"
     if [[ -n "$svc_ids" && "$svc_ids" != "null" ]]; then
-        service_apps_data=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
-            -c "SELECT json_agg(row_to_json(sa)) FROM service_applications sa WHERE sa.service_id IN ($svc_ids);" 2>/dev/null)
-        service_dbs_data=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
-            -c "SELECT json_agg(row_to_json(sd)) FROM service_databases sd WHERE sd.service_id IN ($svc_ids);" 2>/dev/null)
+        service_apps_data=$(_psql_query "SELECT json_agg(row_to_json(sa)) FROM service_applications sa WHERE sa.service_id IN ($svc_ids);")
+        service_apps_data=$(_ensure_json "$service_apps_data")
+
+        service_dbs_data=$(_psql_query "SELECT json_agg(row_to_json(sd)) FROM service_databases sd WHERE sd.service_id IN ($svc_ids);")
+        service_dbs_data=$(_ensure_json "$service_dbs_data")
     fi
 
     # Compile full export
     jq -n \
-        --argjson project "${project_data:-null}" \
-        --argjson environments "${environments_data:-null}" \
-        --argjson applications "${applications_data:-null}" \
-        --argjson app_settings "${app_settings_data:-null}" \
-        --argjson env_vars "${env_vars_data:-null}" \
+        --argjson project "$project_data" \
+        --argjson environments "$environments_data" \
+        --argjson applications "$applications_data" \
+        --argjson app_settings "$app_settings_data" \
+        --argjson env_vars "$env_vars_data" \
         --argjson databases "$databases_data" \
-        --argjson services "${services_data:-null}" \
-        --argjson service_apps "${service_apps_data:-null}" \
-        --argjson service_dbs "${service_dbs_data:-null}" \
+        --argjson services "$services_data" \
+        --argjson service_apps "$service_apps_data" \
+        --argjson service_dbs "$service_dbs_data" \
         '{
             project: $project,
             environments: $environments,
@@ -162,7 +175,6 @@ db_export_project_data() {
         }' > "$export_file"
 
     log_success "Project data exported to: $export_file"
-    echo "$export_file"
 }
 
 # ============================================================

@@ -206,14 +206,14 @@ volume_backup_for_project() {
     app_containers=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
         -c "SELECT a.uuid FROM applications a
             JOIN environments e ON a.environment_id = e.id
-            WHERE e.project_id = $project_id;" 2>/dev/null)
+            WHERE e.project_id = $project_id;" 2>/dev/null || true)
 
     # Get service container names
     local svc_containers
     svc_containers=$(docker exec "$COOLIFY_DB_CONTAINER" psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" -t -A \
         -c "SELECT s.uuid FROM services s
             JOIN environments e ON s.environment_id = e.id
-            WHERE e.project_id = $project_id;" 2>/dev/null)
+            WHERE e.project_id = $project_id;" 2>/dev/null || true)
 
     # Get database container names (all types)
     local db_tables=("standalone_postgresqls" "standalone_mysqls" "standalone_mariadbs" "standalone_mongodbs" "standalone_redis" "standalone_clickhouses" "standalone_dragonflies" "standalone_keydbs")
