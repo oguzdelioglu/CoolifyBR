@@ -116,20 +116,36 @@ extract_backup() {
     log_step "Extracting backup archive"
     log_substep "Archive: $archive ($(stat -c%s "$archive" 2>/dev/null || stat -f%z "$archive" 2>/dev/null || echo '?') bytes)"
 
-    TEMP_DIR=$(create_temp_dir "coolify-restore")
+    # Check available space in /tmp (need ~3x archive size for extraction)
+    local archive_size_mb
+    archive_size_mb=$(( $(stat -c%s "$archive" 2>/dev/null || stat -f%z "$archive" 2>/dev/null || echo "0") / 1048576 ))
+    local needed_mb=$(( archive_size_mb * 3 ))
+    local avail_mb
+    avail_mb=$(df -m /tmp 2>/dev/null | awk 'NR==2 {print $4}' || echo "0")
+
+    if [[ "$avail_mb" -gt 0 && "$avail_mb" -lt "$needed_mb" ]]; then
+        log_warn "/tmp has ${avail_mb}MB free, may need ~${needed_mb}MB for extraction"
+        log_info "Trying to extract in current directory instead..."
+        TEMP_DIR=$(mktemp -d "$(pwd)/coolify-restore-XXXXXX")
+    else
+        TEMP_DIR=$(create_temp_dir "coolify-restore")
+    fi
     log_substep "Temp directory: $TEMP_DIR"
 
-    local tar_err
-    tar_err=$(mktemp)
-    if tar xzf "$archive" -C "$TEMP_DIR" 2>"$tar_err"; then
+    local tar_out
+    tar_out=$(mktemp)
+    local tar_exit=0
+    tar xzf "$archive" -C "$TEMP_DIR" >"$tar_out" 2>&1 || tar_exit=$?
+
+    if [[ $tar_exit -eq 0 ]]; then
         log_success "Archive extracted"
     else
         local err_msg
-        err_msg=$(cat "$tar_err" 2>/dev/null)
-        rm -f "$tar_err"
-        die "Failed to extract backup archive${err_msg:+: $err_msg}"
+        err_msg=$(cat "$tar_out" 2>/dev/null)
+        rm -f "$tar_out"
+        die "Failed to extract backup archive (exit code: $tar_exit)${err_msg:+: $err_msg}"
     fi
-    rm -f "$tar_err"
+    rm -f "$tar_out"
 
     # Find the backup root (could be nested in a directory)
     local manifest
