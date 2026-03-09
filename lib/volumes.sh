@@ -62,8 +62,36 @@ volume_backup() {
         return 1
     fi
 
+    # Get volume size for progress display
+    local vol_size
+    vol_size=$(du -sb "$vol_path" 2>/dev/null | cut -f1 || echo "0")
+    local vol_size_fmt
+    vol_size_fmt=$(format_size "${vol_size:-0}")
+
+    # Run tar in background with spinner for progress
+    local tar_err_file
+    tar_err_file=$(mktemp)
+    tar czf "$backup_file" -C "$vol_path" . 2>"$tar_err_file" &
+    local tar_pid=$!
+
+    # Show spinner while tar runs
+    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local i=0
+    while kill -0 "$tar_pid" 2>/dev/null; do
+        printf "\r  ${CYAN}${spin:$i:1}${NC} Compressing %s (%s)..." "$volume_name" "$vol_size_fmt"
+        i=$(( (i + 1) % ${#spin} ))
+        sleep 0.1
+    done
+    printf "\r%-80s\r" ""
+
+    # Check tar exit code
+    wait "$tar_pid"
+    local tar_exit=$?
     local tar_err
-    if tar_err=$(tar czf "$backup_file" -C "$vol_path" . 2>&1); then
+    tar_err=$(cat "$tar_err_file" 2>/dev/null)
+    rm -f "$tar_err_file"
+
+    if [[ $tar_exit -eq 0 ]]; then
         local size
         size=$(stat -c%s "$backup_file" 2>/dev/null || stat -f%z "$backup_file" 2>/dev/null || echo "0")
         log_success "  Volume '$volume_name' backed up ($(format_size "$size"))"

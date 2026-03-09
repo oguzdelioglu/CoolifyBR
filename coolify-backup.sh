@@ -431,12 +431,28 @@ package_backup() {
         jq ".completed_at = \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"" "$backup_dir/manifest.json" > "$tmp" && mv "$tmp" "$backup_dir/manifest.json"
     fi
 
-    # Create tar.gz
-    tar czf "$archive_file" -C "$OUTPUT_DIR" "$backup_name" 2>/dev/null
+    # Get uncompressed size for progress display
+    local raw_size
+    raw_size=$(du -sb "$backup_dir" 2>/dev/null | cut -f1 || echo "0")
+
+    # Create tar.gz in background with spinner
+    tar czf "$archive_file" -C "$OUTPUT_DIR" "$backup_name" 2>/dev/null &
+    local tar_pid=$!
+
+    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local si=0
+    while kill -0 "$tar_pid" 2>/dev/null; do
+        printf "\r  ${CYAN}${spin:$si:1}${NC} Compressing archive (%s)..." "$(format_size "${raw_size:-0}")"
+        si=$(( (si + 1) % ${#spin} ))
+        sleep 0.1
+    done
+    printf "\r%-80s\r" ""
+
+    wait "$tar_pid"
 
     # Get archive size
     local archive_size
-    archive_size=$(stat -f%z "$archive_file" 2>/dev/null || stat -c%s "$archive_file" 2>/dev/null || echo "0")
+    archive_size=$(stat -c%s "$archive_file" 2>/dev/null || stat -f%z "$archive_file" 2>/dev/null || echo "0")
 
     # Cleanup uncompressed directory
     rm -rf "$backup_dir"
