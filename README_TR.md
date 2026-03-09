@@ -26,24 +26,48 @@ Coolify instance'larınızı **komple**, **proje bazlı** veya **seçici** olara
 - `jq`, `curl`, `tar`, `gzip`
 - Uzak transfer için: `ssh`, `scp` veya `rsync`
 
-## Kurulum
+---
+
+# Yedekleme Kurulumu (Kaynak Sunucu)
+
+Bu adımları **Coolify'ın halihazırda çalıştığı** ve yedeğini almak istediğiniz sunucuda uygulayın.
+
+## 1. CoolifyBR'yi Kurun
 
 ```bash
+# Kaynak sunucuya SSH ile bağlanın
+ssh root@KAYNAK_SUNUCU_IP
+
 # Repoyu klonlayın
 git clone https://github.com/oguzdelioglu/CoolifyBR.git
 cd CoolifyBR
 
 # Scriptleri çalıştırılabilir yapın
 chmod +x coolify-backup.sh coolify-restore.sh
-
-# (Opsiyonel) API token ayarlayın
-cp config.env config.local.env
-nano config.local.env  # COOLIFY_API_TOKEN değerini girin
 ```
 
-## Hızlı Başlangıç
+## 2. (Opsiyonel) API Token Ayarlayın
 
-### Komple Yedekleme
+CoolifyBR, projelerinizi Coolify API üzerinden keşfedebilir. Bu opsiyoneldir — token ayarlanmazsa araç doğrudan veritabanı sorgusu kullanır.
+
+```bash
+cp config.env config.local.env
+nano config.local.env
+```
+
+Aşağıdaki değeri girin (token'ı **Coolify Dashboard → Keys & Tokens → API Tokens** bölümünden alabilirsiniz):
+
+```
+COOLIFY_API_TOKEN=api-tokeniniz-buraya
+```
+
+> Coolify yapılandırma dosyası `/data/coolify/source/.env` konumundadır. CoolifyBR, APP_KEY ve diğer ayarları bu dosyadan otomatik olarak okur.
+
+## 3. Yedekleme Çalıştırın
+
+### Komple Instance Yedekleme
+
+Tüm Coolify instance'ını yedekler: veritabanı, tüm Docker volume'ları, SSH anahtarları, ortam yapılandırması ve proxy ayarları.
 
 ```bash
 sudo ./coolify-backup.sh --mode full
@@ -51,49 +75,25 @@ sudo ./coolify-backup.sh --mode full
 
 ### Proje Bazlı Yedekleme
 
+Bir veya daha fazla belirli projeyi yedekler. İnteraktif menü ile hangi projeleri dahil edeceğinizi seçersiniz.
+
 ```bash
 # İnteraktif proje seçimi
 sudo ./coolify-backup.sh --mode project
 
-# Belirli proje UUID ile
+# Veya proje UUID'sini doğrudan belirtin (interaktif menüyü atlar)
 sudo ./coolify-backup.sh --mode project --project-uuid abc-123-def
 ```
 
 ### Seçici Yedekleme
 
+Tam olarak neyin dahil edileceğini seçin: veritabanı, belirli container volume'ları, SSH anahtarları, ortam yapılandırması.
+
 ```bash
 sudo ./coolify-backup.sh --mode selective
 ```
 
-### Yedekten Geri Yükleme
-
-```bash
-# Yedeği hedef sunucuya kopyalayın
-scp backups/coolify-backup-full-20260308-143000.tar.gz root@yeni-sunucu:/tmp/
-
-# Hedef sunucuda geri yükleyin
-sudo ./coolify-restore.sh --file /tmp/coolify-backup-full-20260308-143000.tar.gz
-```
-
-### Direkt Transfer + Restore
-
-```bash
-# Yedekle ve uzak sunucuya aktar
-sudo ./coolify-backup.sh --mode full --transfer 192.168.1.100
-
-# Özel SSH ayarlarıyla
-sudo ./coolify-backup.sh --mode full \
-  --transfer 192.168.1.100 \
-  --transfer-user root \
-  --transfer-key ~/.ssh/id_rsa \
-  --transfer-port 22
-```
-
----
-
-## Kullanım Detayları
-
-### coolify-backup.sh
+### Yedekleme Seçenekleri
 
 ```
 Modlar:
@@ -113,7 +113,100 @@ Seçenekler:
   --non-interactive    Sorgusuz çalıştır
 ```
 
-### coolify-restore.sh
+## 4. Hedef Sunucuya Transfer
+
+Yedek oluşturulduktan sonra `.tar.gz` arşivini hedef sunucuya aktarmanız gerekir.
+
+### Seçenek A: Manuel SCP
+
+```bash
+scp backups/coolify-backup-full-20260308-143000.tar.gz root@YENI_SUNUCU:/tmp/
+```
+
+### Seçenek B: Otomatik Transfer (dahili)
+
+CoolifyBR, yedeği oluşturduktan sonra doğrudan transfer edebilir:
+
+```bash
+sudo ./coolify-backup.sh --mode full --transfer 192.168.1.100
+```
+
+Özel SSH ayarlarıyla:
+
+```bash
+sudo ./coolify-backup.sh --mode full \
+  --transfer 192.168.1.100 \
+  --transfer-user root \
+  --transfer-key ~/.ssh/id_rsa \
+  --transfer-port 22
+```
+
+Araç, rsync varsa onu kullanır, yoksa SCP'ye geçer. Ayrıca uzak sunucuda restore'u otomatik çalıştırmayı da teklif eder.
+
+---
+
+# Geri Yükleme Kurulumu (Hedef Sunucu)
+
+Bu adımları Coolify'ı geri yüklemek istediğiniz **yeni/hedef sunucuda** uygulayın.
+
+## 1. Hedef Sunucuya Coolify Kurun
+
+Geri yüklemeden **önce** Coolify kurulu olmalıdır. Aynı (veya uyumlu) sürümü kurun:
+
+```bash
+curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+```
+
+Coolify'ın tamamen başlamasını bekleyin. Çalıştığını doğrulayın:
+
+```bash
+docker ps --filter "name=coolify"
+```
+
+Şu container'ları görmelisiniz: `coolify`, `coolify-db`, `coolify-redis`, `coolify-realtime` ve `coolify-proxy`.
+
+## 2. Hedef Sunucuya CoolifyBR Kurun
+
+```bash
+# Hedef sunucuya SSH ile bağlanın
+ssh root@HEDEF_SUNUCU_IP
+
+# Repoyu klonlayın
+git clone https://github.com/oguzdelioglu/CoolifyBR.git
+cd CoolifyBR
+
+# Scriptleri çalıştırılabilir yapın
+chmod +x coolify-backup.sh coolify-restore.sh
+```
+
+## 3. Yedek Arşivini Kopyalayın
+
+Yedeği henüz transfer etmediyseniz:
+
+```bash
+# Yerel makinenizden veya kaynak sunucudan
+scp /yedek/yolu/coolify-backup-full-20260308-143000.tar.gz root@HEDEF_SUNUCU:/tmp/
+```
+
+## 4. Geri Yüklemeyi Çalıştırın
+
+```bash
+sudo ./coolify-restore.sh --file /tmp/coolify-backup-full-20260308-143000.tar.gz
+```
+
+Restore scripti sırasıyla şunları yapar:
+
+1. Yedek arşivini çıkarır
+2. Manifest dosyasını okur ve yedek bilgilerini gösterir
+3. Coolify container'larını durdurur (`coolify-db` çalışır kalır)
+4. PostgreSQL veritabanını dump'tan geri yükler
+5. Tüm Docker volume'larını geri yükler
+6. SSH anahtarlarını geri yükler ve authorized_keys dosyasını birleştirir
+7. `/data/coolify/source/.env` dosyasında `APP_PREVIOUS_KEYS` günceller (eski APP_KEY çalışmaya devam eder)
+8. Proxy (Traefik/Caddy) yapılandırmasını geri yükler
+9. Tüm Coolify container'larını yeniden başlatır
+
+### Geri Yükleme Seçenekleri
 
 ```
 Seçenekler:
@@ -127,6 +220,31 @@ Seçenekler:
   --skip-restart       Coolify yeniden başlatmayı atla
   --non-interactive    Sorgusuz geri yükle (her şeyi geri yükle)
 ```
+
+### Seçici Geri Yükleme
+
+Sadece belirli kısımları geri yüklemek istiyorsanız:
+
+```bash
+# Sadece veritabanını geri yükle, diğer her şeyi atla
+sudo ./coolify-restore.sh --file /tmp/backup.tar.gz --skip-volumes --skip-ssh --skip-proxy
+
+# İnteraktif seçici mod: neyi geri yükleyeceğinizi seçin
+sudo ./coolify-restore.sh --file /tmp/backup.tar.gz --mode selective
+
+# Sorgusuz: her şeyi sormadan geri yükle
+sudo ./coolify-restore.sh --file /tmp/backup.tar.gz --non-interactive
+```
+
+## 5. Geri Yükleme Sonrası Doğrulama
+
+Geri yükleme tamamlandıktan sonra:
+
+1. **Coolify dashboard'u açın** ve giriş yapabildiğinizi doğrulayın
+2. **Projeleri ve deployment'ları kontrol edin** — görünür ve doğru olduklarından emin olun
+3. **SSH bağlantılarını test edin** — yönetilen sunuculara bağlantıyı deneyin (Ayarlar → SSH Keys)
+4. **Uygulamaları yeniden deploy edin** — çalışmayan container'lar varsa
+5. **DNS kayıtlarını güncelleyin** — sunucu IP'si değiştiyse
 
 ---
 
@@ -148,16 +266,30 @@ coolify-backup-full-20260308-143000.tar.gz
     └── proxy-config.tar.gz # Traefik/Caddy config
 ```
 
-## Restore Adımları (Manuel)
+## Manuel Geri Yükleme (CoolifyBR Olmadan)
 
-Eğer scripti kullanamıyorsanız, yedekten manuel geri yükleme:
+Restore scriptini kullanamıyorsanız, manuel olarak yapın:
 
 1. **Hedef sunucuya Coolify kurun** (aynı sürüm)
 2. **Coolify container'larını durdurun**: `docker stop coolify coolify-redis coolify-realtime`
-3. **DB'yi geri yükleyin**: `cat coolify-db.dump | docker exec -i coolify-db pg_restore --verbose --clean --no-acl --no-owner -U coolify -d coolify`
-4. **SSH anahtarlarını kopyalayın**: `/data/coolify/ssh/keys/` altına
-5. **APP_KEY'i ayarlayın**: `/data/coolify/source/.env` dosyasında `APP_PREVIOUS_KEYS=eski_key`
-6. **Coolify'ı yeniden başlatın**: `curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash`
+3. **Veritabanını geri yükleyin**:
+   ```bash
+   cat coolify-db.dump | docker exec -i coolify-db pg_restore \
+     --verbose --clean --no-acl --no-owner -U coolify -d coolify
+   ```
+4. **SSH anahtarlarını kopyalayın** ve izinleri ayarlayın:
+   ```bash
+   cp backup/keys/* /data/coolify/ssh/keys/
+   chmod 600 /data/coolify/ssh/keys/*
+   ```
+5. **APP_KEY'i ayarlayın** — yedekteki eski APP_KEY'i `/data/coolify/source/.env` dosyasına ekleyin:
+   ```bash
+   echo "APP_PREVIOUS_KEYS=yedekteki_eski_key" >> /data/coolify/source/.env
+   ```
+6. **Coolify'ı yeniden başlatın**:
+   ```bash
+   cd /data/coolify/source && docker compose up -d
+   ```
 
 ---
 
@@ -166,10 +298,12 @@ Eğer scripti kullanamıyorsanız, yedekten manuel geri yükleme:
 | Problem | Çözüm |
 |---------|-------|
 | 500 hatası login'de | `/data/coolify/source/.env` dosyasında `APP_PREVIOUS_KEYS` doğru ayarlandığından emin olun |
-| İzin hatası | `sudo chown -R root:root /data/coolify` |
-| Sunuculara SSH bağlanamıyor | SSH anahtarlarının doğru restore edildiğini kontrol edin |
+| İzin hatası | `sudo chown -R root:root /data/coolify` komutunu çalıştırın |
+| Sunuculara SSH bağlanamıyor | `/data/coolify/ssh/keys/` altındaki SSH anahtarlarının doğru restore edildiğini kontrol edin |
 | Docker volumes geri yüklenmiyor | Hedef sunucuda Docker'ın çalıştığından emin olun |
-| API token hatası | `config.env` dosyasında token'ı kontrol edin |
+| API token hatası | `config.env` dosyasındaki token'ı kontrol edin |
+| Veritabanı restore başarısız | `coolify-db` container'ının çalıştığından emin olun: `docker start coolify-db` |
+| Coolify restore sonrası başlamıyor | `cd /data/coolify/source && docker compose up -d` komutunu çalıştırın |
 
 ---
 

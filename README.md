@@ -26,24 +26,48 @@ Back up your Coolify instances — **fully**, **per-project**, or **selectively*
 - `jq`, `curl`, `tar`, `gzip`
 - For remote transfer: `ssh`, `scp` or `rsync`
 
-## Installation
+---
+
+# Backup Setup (Source Server)
+
+Run these steps on the server **where Coolify is currently running** and you want to take a backup from.
+
+## 1. Install CoolifyBR
 
 ```bash
+# SSH into your source server
+ssh root@YOUR_SOURCE_SERVER
+
 # Clone the repository
 git clone https://github.com/oguzdelioglu/CoolifyBR.git
 cd CoolifyBR
 
 # Make scripts executable
 chmod +x coolify-backup.sh coolify-restore.sh
-
-# (Optional) Set your API token
-cp config.env config.local.env
-nano config.local.env  # Enter your COOLIFY_API_TOKEN
 ```
 
-## Quick Start
+## 2. (Optional) Configure API Token
 
-### Full Backup
+CoolifyBR can discover your projects via the Coolify API. This is optional — if no token is set, the tool falls back to direct database queries.
+
+```bash
+cp config.env config.local.env
+nano config.local.env
+```
+
+Set the following value (get your token from **Coolify Dashboard → Keys & Tokens → API Tokens**):
+
+```
+COOLIFY_API_TOKEN=your-api-token-here
+```
+
+> The Coolify configuration file is located at `/data/coolify/source/.env`. CoolifyBR reads APP_KEY and other settings from this file automatically.
+
+## 3. Run a Backup
+
+### Full Instance Backup
+
+Backs up the entire Coolify instance: database, all Docker volumes, SSH keys, environment config, and proxy settings.
 
 ```bash
 sudo ./coolify-backup.sh --mode full
@@ -51,49 +75,25 @@ sudo ./coolify-backup.sh --mode full
 
 ### Project Backup
 
+Backs up one or more specific projects. An interactive menu lets you pick which projects to include.
+
 ```bash
 # Interactive project selection
 sudo ./coolify-backup.sh --mode project
 
-# With a specific project UUID
+# Or specify a project UUID directly (skip interactive menu)
 sudo ./coolify-backup.sh --mode project --project-uuid abc-123-def
 ```
 
 ### Selective Backup
 
+Choose exactly what to include: database, specific container volumes, SSH keys, environment.
+
 ```bash
 sudo ./coolify-backup.sh --mode selective
 ```
 
-### Restore from Backup
-
-```bash
-# Copy the backup to the target server
-scp backups/coolify-backup-full-20260308-143000.tar.gz root@new-server:/tmp/
-
-# Restore on the target server
-sudo ./coolify-restore.sh --file /tmp/coolify-backup-full-20260308-143000.tar.gz
-```
-
-### Direct Transfer + Restore
-
-```bash
-# Backup and transfer to remote server
-sudo ./coolify-backup.sh --mode full --transfer 192.168.1.100
-
-# With custom SSH settings
-sudo ./coolify-backup.sh --mode full \
-  --transfer 192.168.1.100 \
-  --transfer-user root \
-  --transfer-key ~/.ssh/id_rsa \
-  --transfer-port 22
-```
-
----
-
-## Usage Reference
-
-### coolify-backup.sh
+### Backup Options
 
 ```
 Modes:
@@ -113,7 +113,100 @@ Options:
   --non-interactive    Run without prompts (use defaults)
 ```
 
-### coolify-restore.sh
+## 4. Transfer to Destination Server
+
+After the backup is created, you need to transfer the `.tar.gz` archive to the target server.
+
+### Option A: Manual SCP
+
+```bash
+scp backups/coolify-backup-full-20260308-143000.tar.gz root@NEW_SERVER:/tmp/
+```
+
+### Option B: Automatic Transfer (built-in)
+
+CoolifyBR can transfer the backup directly after creation:
+
+```bash
+sudo ./coolify-backup.sh --mode full --transfer 192.168.1.100
+```
+
+With custom SSH settings:
+
+```bash
+sudo ./coolify-backup.sh --mode full \
+  --transfer 192.168.1.100 \
+  --transfer-user root \
+  --transfer-key ~/.ssh/id_rsa \
+  --transfer-port 22
+```
+
+This uses rsync if available, otherwise falls back to SCP. The tool will also offer to run the restore on the remote server automatically.
+
+---
+
+# Restore Setup (Destination Server)
+
+Run these steps on the **new/target server** where you want to restore Coolify.
+
+## 1. Install Coolify on the Target Server
+
+Coolify must be installed **before** restoring. Install the same (or compatible) version:
+
+```bash
+curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+```
+
+Wait for Coolify to fully start. Verify it is running:
+
+```bash
+docker ps --filter "name=coolify"
+```
+
+You should see `coolify`, `coolify-db`, `coolify-redis`, `coolify-realtime`, and `coolify-proxy` containers.
+
+## 2. Install CoolifyBR on the Target Server
+
+```bash
+# SSH into your target server
+ssh root@YOUR_TARGET_SERVER
+
+# Clone the repository
+git clone https://github.com/oguzdelioglu/CoolifyBR.git
+cd CoolifyBR
+
+# Make scripts executable
+chmod +x coolify-backup.sh coolify-restore.sh
+```
+
+## 3. Copy the Backup Archive
+
+If you haven't already transferred the backup:
+
+```bash
+# From your local machine or source server
+scp /path/to/coolify-backup-full-20260308-143000.tar.gz root@TARGET_SERVER:/tmp/
+```
+
+## 4. Run the Restore
+
+```bash
+sudo ./coolify-restore.sh --file /tmp/coolify-backup-full-20260308-143000.tar.gz
+```
+
+The restore script will:
+
+1. Extract the backup archive
+2. Read the manifest and display backup info
+3. Stop Coolify containers (keeps `coolify-db` running)
+4. Restore the PostgreSQL database from the dump
+5. Restore all Docker volumes
+6. Restore SSH keys and merge authorized_keys
+7. Update `APP_PREVIOUS_KEYS` in `/data/coolify/source/.env` (so the old APP_KEY still works)
+8. Restore proxy (Traefik/Caddy) configuration
+9. Restart all Coolify containers
+
+### Restore Options
 
 ```
 Options:
@@ -127,6 +220,31 @@ Options:
   --skip-restart       Skip Coolify restart after restore
   --non-interactive    Run without prompts (restore everything)
 ```
+
+### Selective Restore
+
+If you only want to restore specific parts:
+
+```bash
+# Restore only the database, skip everything else
+sudo ./coolify-restore.sh --file /tmp/backup.tar.gz --skip-volumes --skip-ssh --skip-proxy
+
+# Interactive selective mode: choose what to restore
+sudo ./coolify-restore.sh --file /tmp/backup.tar.gz --mode selective
+
+# Non-interactive: restore everything without prompts
+sudo ./coolify-restore.sh --file /tmp/backup.tar.gz --non-interactive
+```
+
+## 5. Post-Restore Verification
+
+After restore completes:
+
+1. **Open your Coolify dashboard** and verify you can log in
+2. **Check projects and deployments** are visible and correct
+3. **Test SSH connections** to managed servers (Settings → SSH Keys)
+4. **Re-deploy applications** if any containers are not running
+5. **Update DNS records** if the server IP has changed
 
 ---
 
@@ -148,16 +266,29 @@ coolify-backup-full-20260308-143000.tar.gz
     └── proxy-config.tar.gz # Traefik/Caddy config
 ```
 
-## Manual Restore Steps
+## Manual Restore (Without CoolifyBR)
 
-If you cannot use the script, restore manually:
+If you cannot use the restore script, do it manually:
 
 1. **Install Coolify on the target server** (same version)
 2. **Stop Coolify containers**: `docker stop coolify coolify-redis coolify-realtime`
-3. **Restore the DB**: `cat coolify-db.dump | docker exec -i coolify-db pg_restore --verbose --clean --no-acl --no-owner -U coolify -d coolify`
-4. **Copy SSH keys** into `/data/coolify/ssh/keys/`
-5. **Set APP_KEY**: Add `APP_PREVIOUS_KEYS=old_key` to `/data/coolify/source/.env`
-6. **Restart Coolify**: `curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash`
+3. **Restore the DB**:
+   ```bash
+   cat coolify-db.dump | docker exec -i coolify-db pg_restore \
+     --verbose --clean --no-acl --no-owner -U coolify -d coolify
+   ```
+4. **Copy SSH keys** into `/data/coolify/ssh/keys/` and set permissions:
+   ```bash
+   chmod 600 /data/coolify/ssh/keys/*
+   ```
+5. **Set APP_KEY** — add the old APP_KEY to `/data/coolify/source/.env`:
+   ```bash
+   echo "APP_PREVIOUS_KEYS=old_key_from_backup" >> /data/coolify/source/.env
+   ```
+6. **Restart Coolify**:
+   ```bash
+   cd /data/coolify/source && docker compose up -d
+   ```
 
 ---
 
@@ -167,9 +298,11 @@ If you cannot use the script, restore manually:
 |---------|----------|
 | 500 error on login | Ensure `APP_PREVIOUS_KEYS` is set correctly in `/data/coolify/source/.env` |
 | Permission denied | Run `sudo chown -R root:root /data/coolify` |
-| Cannot SSH to managed servers | Verify SSH keys were restored correctly |
+| Cannot SSH to managed servers | Verify SSH keys were restored correctly under `/data/coolify/ssh/keys/` |
 | Docker volumes not restoring | Ensure Docker is running on the target server |
 | API token error | Check the token in `config.env` |
+| Database restore fails | Make sure `coolify-db` container is running: `docker start coolify-db` |
+| Coolify won't start after restore | Run `cd /data/coolify/source && docker compose up -d` |
 
 ---
 
