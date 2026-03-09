@@ -62,14 +62,15 @@ volume_backup() {
         return 1
     fi
 
-    if tar czf "$backup_file" -C "$vol_path" . 2>/dev/null; then
+    local tar_err
+    if tar_err=$(tar czf "$backup_file" -C "$vol_path" . 2>&1); then
         local size
         size=$(stat -c%s "$backup_file" 2>/dev/null || stat -f%z "$backup_file" 2>/dev/null || echo "0")
         log_success "  Volume '$volume_name' backed up ($(format_size "$size"))"
-        echo "$backup_file"
         return 0
     else
         log_error "  Failed to backup volume '$volume_name'"
+        [[ -n "$tar_err" ]] && log_error "  tar: $tar_err"
         rm -f "$backup_file"
         return 1
     fi
@@ -83,14 +84,11 @@ volume_backup_multiple() {
 
     local backed_up=0
     local failed=0
-    local backup_files=()
 
     mkdir -p "$output_dir"
 
     for vol in "${volume_names[@]}"; do
-        local result
-        if result=$(volume_backup "$vol" "$output_dir"); then
-            backup_files+=("$result")
+        if volume_backup "$vol" "$output_dir"; then
             backed_up=$((backed_up + 1))
         else
             failed=$((failed + 1))
@@ -98,7 +96,6 @@ volume_backup_multiple() {
     done
 
     log_info "Volumes backed up: $backed_up, Failed: $failed"
-    printf '%s\n' "${backup_files[@]}"
 }
 
 # Backup all volumes for a specific container
