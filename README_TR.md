@@ -143,7 +143,7 @@ coolify-backup-full-20260308-143000.tar.gz
 ├── ssh/
 │   └── keys/               # SSH key dosyaları
 ├── env/
-│   └── .env                # APP_KEY dahil
+│   └── .env                # /data/coolify/source/.env kopyası (APP_KEY dahil)
 └── proxy/
     └── proxy-config.tar.gz # Traefik/Caddy config
 ```
@@ -156,7 +156,7 @@ Eğer scripti kullanamıyorsanız, yedekten manuel geri yükleme:
 2. **Coolify container'larını durdurun**: `docker stop coolify coolify-redis coolify-realtime`
 3. **DB'yi geri yükleyin**: `cat coolify-db.dump | docker exec -i coolify-db pg_restore --verbose --clean --no-acl --no-owner -U coolify -d coolify`
 4. **SSH anahtarlarını kopyalayın**: `/data/coolify/ssh/keys/` altına
-5. **APP_KEY'i ayarlayın**: `.env` dosyasında `APP_PREVIOUS_KEYS=eski_key`
+5. **APP_KEY'i ayarlayın**: `/data/coolify/source/.env` dosyasında `APP_PREVIOUS_KEYS=eski_key`
 6. **Coolify'ı yeniden başlatın**: `curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash`
 
 ---
@@ -165,7 +165,7 @@ Eğer scripti kullanamıyorsanız, yedekten manuel geri yükleme:
 
 | Problem | Çözüm |
 |---------|-------|
-| 500 hatası login'de | `APP_PREVIOUS_KEYS` doğru ayarlandığından emin olun |
+| 500 hatası login'de | `/data/coolify/source/.env` dosyasında `APP_PREVIOUS_KEYS` doğru ayarlandığından emin olun |
 | İzin hatası | `sudo chown -R root:root /data/coolify` |
 | Sunuculara SSH bağlanamıyor | SSH anahtarlarının doğru restore edildiğini kontrol edin |
 | Docker volumes geri yüklenmiyor | Hedef sunucuda Docker'ın çalıştığından emin olun |

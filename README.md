@@ -143,7 +143,7 @@ coolify-backup-full-20260308-143000.tar.gz
 ├── ssh/
 │   └── keys/               # SSH key files
 ├── env/
-│   └── .env                # Including APP_KEY
+│   └── .env                # Copy of /data/coolify/source/.env (includes APP_KEY)
 └── proxy/
     └── proxy-config.tar.gz # Traefik/Caddy config
 ```
@@ -156,7 +156,7 @@ If you cannot use the script, restore manually:
 2. **Stop Coolify containers**: `docker stop coolify coolify-redis coolify-realtime`
 3. **Restore the DB**: `cat coolify-db.dump | docker exec -i coolify-db pg_restore --verbose --clean --no-acl --no-owner -U coolify -d coolify`
 4. **Copy SSH keys** into `/data/coolify/ssh/keys/`
-5. **Set APP_KEY**: Add `APP_PREVIOUS_KEYS=old_key` to `.env`
+5. **Set APP_KEY**: Add `APP_PREVIOUS_KEYS=old_key` to `/data/coolify/source/.env`
 6. **Restart Coolify**: `curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash`
 
 ---
@@ -165,7 +165,7 @@ If you cannot use the script, restore manually:
 
 | Problem | Solution |
 |---------|----------|
-| 500 error on login | Ensure `APP_PREVIOUS_KEYS` is set correctly in `.env` |
+| 500 error on login | Ensure `APP_PREVIOUS_KEYS` is set correctly in `/data/coolify/source/.env` |
 | Permission denied | Run `sudo chown -R root:root /data/coolify` |
 | Cannot SSH to managed servers | Verify SSH keys were restored correctly |
 | Docker volumes not restoring | Ensure Docker is running on the target server |
