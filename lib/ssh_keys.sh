@@ -57,7 +57,7 @@ env_backup() {
 
         # Extract and display APP_KEY (masked)
         local app_key
-        app_key=$(grep "^APP_KEY=" "$COOLIFY_ENV" | cut -d'=' -f2-)
+        app_key=$(grep "^APP_KEY=" "$COOLIFY_ENV" | cut -d'=' -f2- || true)
         if [[ -n "$app_key" ]]; then
             local masked="${app_key:0:10}...${app_key: -4}"
             log_info "APP_KEY captured: $masked"
@@ -186,7 +186,7 @@ env_restore() {
 
     # Extract old APP_KEY from backup
     local old_app_key
-    old_app_key=$(grep "^APP_KEY=" "$env_file" | cut -d'=' -f2-)
+    old_app_key=$(grep "^APP_KEY=" "$env_file" | cut -d'=' -f2- || true)
 
     if [[ -z "$old_app_key" ]]; then
         log_warn "No APP_KEY found in backup .env"

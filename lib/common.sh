@@ -149,7 +149,7 @@ COOLIFY_CONTAINERS=("coolify" "coolify-db" "coolify-redis" "coolify-realtime")
 
 get_app_key() {
     if [[ -f "$COOLIFY_ENV" ]]; then
-        grep "^APP_KEY=" "$COOLIFY_ENV" | cut -d'=' -f2-
+        grep "^APP_KEY=" "$COOLIFY_ENV" | cut -d'=' -f2- || true
     else
         log_error "Coolify .env file not found at $COOLIFY_ENV"
         return 1
@@ -285,11 +285,11 @@ prompt_multi_selection() {
 format_size() {
     local bytes=$1
     if [[ $bytes -ge 1073741824 ]]; then
-        echo "$(echo "scale=2; $bytes / 1073741824" | bc) GB"
+        awk "BEGIN {printf \"%.2f GB\", $bytes / 1073741824}"
     elif [[ $bytes -ge 1048576 ]]; then
-        echo "$(echo "scale=2; $bytes / 1048576" | bc) MB"
+        awk "BEGIN {printf \"%.2f MB\", $bytes / 1048576}"
     elif [[ $bytes -ge 1024 ]]; then
-        echo "$(echo "scale=2; $bytes / 1024" | bc) KB"
+        awk "BEGIN {printf \"%.2f KB\", $bytes / 1024}"
     else
         echo "$bytes B"
     fi

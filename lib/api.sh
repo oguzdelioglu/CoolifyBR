@@ -255,13 +255,13 @@ discover_containers_docker() {
 # Get container volumes by container name
 get_container_volumes() {
     local container_name="$1"
-    docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{printf "\n"}}{{end}}{{end}}' "$container_name" 2>/dev/null | grep -v '^$'
+    docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{printf "\n"}}{{end}}{{end}}' "$container_name" 2>/dev/null | grep -v '^$' || true
 }
 
 # Get container bind mounts by container name
 get_container_binds() {
     local container_name="$1"
-    docker inspect --format '{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}:{{.Destination}}{{printf "\n"}}{{end}}{{end}}' "$container_name" 2>/dev/null | grep -v '^$'
+    docker inspect --format '{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}:{{.Destination}}{{printf "\n"}}{{end}}{{end}}' "$container_name" 2>/dev/null | grep -v '^$' || true
 }
 
 # Get all Docker volumes for Coolify-managed containers
@@ -332,7 +332,7 @@ db_discover_project_databases() {
         fi
     done
 
-    echo "$results" | grep -v '^$'
+    echo "$results" | grep -v '^$' || true
 }
 
 db_discover_project_services() {

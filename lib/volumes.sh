@@ -10,22 +10,26 @@
 volume_list_for_container() {
     local container_name="$1"
     docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}|{{.Destination}}{{printf "\n"}}{{end}}{{end}}' \
-        "$container_name" 2>/dev/null | grep -v '^$'
+        "$container_name" 2>/dev/null | grep -v '^$' || true
 }
 
 # List all bind mounts for a given container
 binds_list_for_container() {
     local container_name="$1"
     docker inspect --format '{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}|{{.Destination}}{{printf "\n"}}{{end}}{{end}}' \
-        "$container_name" 2>/dev/null | grep -v '^$'
+        "$container_name" 2>/dev/null | grep -v '^$' || true
 }
 
 # Get volume size
 volume_get_size() {
     local volume_name="$1"
-    local size
-    size=$(docker run --rm -v "${volume_name}:/volume" busybox sh -c "du -sb /volume 2>/dev/null | cut -f1" 2>/dev/null)
-    echo "${size:-0}"
+    local vol_path
+    vol_path=$(docker volume inspect --format '{{.Mountpoint}}' "$volume_name" 2>/dev/null)
+    if [[ -n "$vol_path" && -d "$vol_path" ]]; then
+        du -sb "$vol_path" 2>/dev/null | cut -f1
+    else
+        echo "0"
+    fi
 }
 
 # Check if volume exists
@@ -50,14 +54,17 @@ volume_backup() {
 
     log_substep "Backing up volume: $volume_name"
 
-    if docker run --rm \
-        -v "${volume_name}:/volume:ro" \
-        -v "${output_dir}:/backup" \
-        busybox \
-        tar czf "/backup/${volume_name}-backup.tar.gz" -C /volume . 2>/dev/null; then
+    local vol_path
+    vol_path=$(docker volume inspect --format '{{.Mountpoint}}' "$volume_name" 2>/dev/null)
 
+    if [[ -z "$vol_path" || ! -d "$vol_path" ]]; then
+        log_error "  Cannot find mount point for volume '$volume_name'"
+        return 1
+    fi
+
+    if tar czf "$backup_file" -C "$vol_path" . 2>/dev/null; then
         local size
-        size=$(stat -f%z "$backup_file" 2>/dev/null || stat -c%s "$backup_file" 2>/dev/null || echo "0")
+        size=$(stat -c%s "$backup_file" 2>/dev/null || stat -f%z "$backup_file" 2>/dev/null || echo "0")
         log_success "  Volume '$volume_name' backed up ($(format_size "$size"))"
         echo "$backup_file"
         return 0
@@ -145,7 +152,7 @@ volume_backup_all() {
         local vols
         vols=$(volume_list_for_container "$container")
         while IFS='|' read -r name dest; do
-            if [[ -n "$name" ]] && [[ ! " ${seen_volumes[*]} " =~ " $name " ]]; then
+            if [[ -n "$name" ]] && [[ ! " ${seen_volumes[*]+${seen_volumes[*]}} " =~ " $name " ]]; then
                 all_volumes+=("$name")
                 seen_volumes+=("$name")
             fi
@@ -204,7 +211,7 @@ volume_backup_for_project() {
     [[ -n "$svc_containers" ]] && all_uuids+="$svc_containers"$'\n'
     [[ -n "$db_containers" ]] && all_uuids+="$db_containers"
 
-    all_uuids=$(echo "$all_uuids" | grep -v '^$' | sort -u)
+    all_uuids=$(echo "$all_uuids" | grep -v '^$' | sort -u || true)
 
     if [[ -z "$all_uuids" ]]; then
         log_info "No resource UUIDs found for project"
@@ -226,7 +233,7 @@ volume_backup_for_project() {
                 local vols
                 vols=$(volume_list_for_container "$container")
                 while IFS='|' read -r name dest; do
-                    if [[ -n "$name" ]] && [[ ! " ${seen_volumes[*]} " =~ " $name " ]]; then
+                    if [[ -n "$name" ]] && [[ ! " ${seen_volumes[*]+${seen_volumes[*]}} " =~ " $name " ]]; then
                         all_volumes+=("$name")
                         seen_volumes+=("$name")
                     fi
@@ -299,11 +306,17 @@ volume_restore() {
     fi
 
     # Restore from backup
-    if docker run --rm \
-        -v "${volume_name}:/volume" \
-        -v "$(dirname "$backup_file"):/backup:ro" \
-        busybox \
-        sh -c "rm -rf /volume/* /volume/..?* /volume/.[!.]* 2>/dev/null; tar xzf /backup/$(basename "$backup_file") -C /volume" 2>/dev/null; then
+    local vol_path
+    vol_path=$(docker volume inspect --format '{{.Mountpoint}}' "$volume_name" 2>/dev/null)
+
+    if [[ -z "$vol_path" || ! -d "$vol_path" ]]; then
+        log_error "  Cannot find mount point for volume '$volume_name'"
+        return 1
+    fi
+
+    # Clear existing contents and extract backup
+    rm -rf "${vol_path:?}"/* "${vol_path}"/.??* 2>/dev/null || true
+    if tar xzf "$backup_file" -C "$vol_path" 2>/dev/null; then
         log_success "  Volume '$volume_name' restored"
         return 0
     else
