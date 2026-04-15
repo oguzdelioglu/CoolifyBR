@@ -64,6 +64,11 @@ REMOTE_REPO_DIR="${REMOTE_REPO_DIR:-/root/CoolifyBR}"
 REMOTE_OUTPUT_DIR="${REMOTE_OUTPUT_DIR:-/root/CoolifyBR/backups}"
 LOCAL_BACKUP_ROOT="${LOCAL_BACKUP_ROOT:-/srv/backups/$BACKUP_JOB_NAME}"
 BACKUP_MODE="${BACKUP_MODE:-full}"
+REMOTE_BACKUP_EXTRA_ARGS="${REMOTE_BACKUP_EXTRA_ARGS:-}"
+VERIFY_AFTER_PULL="${VERIFY_AFTER_PULL:-true}"
+VERIFY_VOLUME_ARCHIVES="${VERIFY_VOLUME_ARCHIVES:-true}"
+DELETE_REMOTE_ARCHIVE_AFTER_PULL="${DELETE_REMOTE_ARCHIVE_AFTER_PULL:-false}"
+DELETE_LOCAL_ARCHIVE_AFTER_EXTRACT="${DELETE_LOCAL_ARCHIVE_AFTER_EXTRACT:-false}"
 RETENTION_DAILY="${RETENTION_DAILY:-7}"
 RETENTION_WEEKLY="${RETENTION_WEEKLY:-4}"
 RETENTION_MONTHLY="${RETENTION_MONTHLY:-6}"
@@ -79,6 +84,7 @@ TMP_DIR="$LOCAL_BACKUP_ROOT/tmp"
 RUN_ID="$(timestamp_utc)"
 RUN_LOG="$LOG_DIR/backup-$RUN_ID.log"
 LOCK_DIR="$TMP_DIR/.backup.lock"
+LOCAL_ARCHIVE_PATH=""
 
 ensure_dir "$FILES_DIR"
 ensure_dir "$DB_DIR"
@@ -133,6 +139,13 @@ ensure_host_key() {
     ssh-keyscan -H -p "$REMOTE_PORT" "$REMOTE_HOST" >> /root/.ssh/known_hosts 2>/dev/null || true
     sort -u /root/.ssh/known_hosts -o /root/.ssh/known_hosts
     chmod 600 /root/.ssh/known_hosts
+}
+
+bool_is_true() {
+    case "${1:-false}" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 bootstrap_remote_key() {
@@ -211,7 +224,7 @@ EOF' >"$inventory_file"
 
 run_remote_backup() {
     log INFO "Starting remote CoolifyBR ${BACKUP_MODE} backup"
-    ssh_base "mkdir -p '$REMOTE_OUTPUT_DIR' && cd '$REMOTE_REPO_DIR' && chmod +x coolify-backup.sh coolify-restore.sh && ./coolify-backup.sh --mode '$BACKUP_MODE' --output '$REMOTE_OUTPUT_DIR' --non-interactive"
+    ssh_base "mkdir -p '$REMOTE_OUTPUT_DIR' && cd '$REMOTE_REPO_DIR' && chmod +x coolify-backup.sh coolify-restore.sh && ./coolify-backup.sh --mode '$BACKUP_MODE' --output '$REMOTE_OUTPUT_DIR' --non-interactive $REMOTE_BACKUP_EXTRA_ARGS"
 }
 
 fetch_latest_archive() {
@@ -245,6 +258,67 @@ extract_snapshot() {
     ln -sfn "$DOCKER_DIR/$snapshot_id" "$LOCAL_BACKUP_ROOT/current-docker"
 
     rm -rf "$extract_root"
+}
+
+write_snapshot_metadata() {
+    local snapshot_id="$1"
+    local remote_archive="$2"
+    local metadata_file="$FILES_DIR/$snapshot_id/pull-metadata.txt"
+
+    {
+        printf 'job_name=%s\n' "$BACKUP_JOB_NAME"
+        printf 'run_id=%s\n' "$snapshot_id"
+        printf 'remote_host=%s\n' "$REMOTE_HOST"
+        printf 'remote_user=%s\n' "$REMOTE_USER"
+        printf 'remote_port=%s\n' "$REMOTE_PORT"
+        printf 'remote_archive=%s\n' "$remote_archive"
+        printf 'backup_mode=%s\n' "$BACKUP_MODE"
+        printf 'local_archive=%s\n' "${LOCAL_ARCHIVE_PATH:-}"
+        printf 'completed_at=%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    } >"$metadata_file"
+}
+
+verify_local_snapshot() {
+    local snapshot_id="$1"
+    local archive_path="$2"
+    local manifest="$FILES_DIR/$snapshot_id/manifest.json"
+    local inventory="$DOCKER_DIR/$snapshot_id/remote-inventory.txt"
+
+    log INFO "Verifying pulled snapshot"
+
+    [[ -f "$manifest" ]] || fail "Manifest missing after extraction: $manifest"
+    [[ -s "$inventory" ]] || fail "Remote inventory missing or empty: $inventory"
+
+    if [[ -n "$archive_path" && -f "$archive_path" ]]; then
+        tar tzf "$archive_path" >/dev/null
+    fi
+
+    if [[ -d "$DB_DIR/$snapshot_id/database" ]]; then
+        find "$DB_DIR/$snapshot_id/database" -type f -size +0c | grep -q . || fail "Database backup directory exists but contains no non-empty files"
+    fi
+
+    if bool_is_true "$VERIFY_VOLUME_ARCHIVES" && [[ -d "$DOCKER_DIR/$snapshot_id/volumes" ]]; then
+        while IFS= read -r archive; do
+            gzip -t "$archive"
+        done < <(find "$DOCKER_DIR/$snapshot_id/volumes" -type f -name '*.tar.gz' | sort)
+    fi
+
+    log INFO "Verification passed"
+}
+
+cleanup_transferred_archives() {
+    local remote_archive="$1"
+    local archive_path="$2"
+
+    if bool_is_true "$DELETE_REMOTE_ARCHIVE_AFTER_PULL"; then
+        log INFO "Deleting remote archive: $remote_archive"
+        ssh_base "rm -f '$remote_archive'"
+    fi
+
+    if bool_is_true "$DELETE_LOCAL_ARCHIVE_AFTER_EXTRACT" && [[ -n "$archive_path" && -f "$archive_path" ]]; then
+        log INFO "Deleting local pulled archive: $archive_path"
+        rm -f "$archive_path"
+    fi
 }
 
 prune_snapshots() {
@@ -301,6 +375,7 @@ main() {
     require_cmd tar
     require_cmd tee
     require_cmd find
+    require_cmd gzip
 
     [[ -d "$REPO_DIR" ]] || fail "Repo directory not found: $REPO_DIR"
     [[ -f "$REMOTE_KEY_PATH" ]] || fail "Missing private key: $REMOTE_KEY_PATH"
@@ -322,10 +397,16 @@ main() {
     local local_snapshot_dir="$FILES_DIR/$RUN_ID"
     mkdir -p "$local_snapshot_dir"
     local local_archive="$local_snapshot_dir/$(basename "$remote_archive")"
+    LOCAL_ARCHIVE_PATH="$local_archive"
 
     scp_from_remote "$remote_archive" "$local_archive"
     collect_remote_inventory "$RUN_ID"
     extract_snapshot "$RUN_ID" "$local_archive"
+    write_snapshot_metadata "$RUN_ID" "$remote_archive"
+    if bool_is_true "$VERIFY_AFTER_PULL"; then
+        verify_local_snapshot "$RUN_ID" "$local_archive"
+    fi
+    cleanup_transferred_archives "$remote_archive" "$local_archive"
     prune_snapshots
 
     log INFO "Backup completed successfully"

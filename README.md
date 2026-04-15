@@ -16,6 +16,8 @@ Back up your Coolify instances — **fully**, **per-project**, or **selectively*
 - **Proxy Config**: Traefik/Caddy configuration backup
 - **Remote Transfer**: Automatic SCP/rsync transfer to destination server
 - **Remote Pull Automation**: Schedule backups from a separate backup host that connects to the source server, runs the backup, and pulls archives back
+- **Multi-Server Pull Jobs**: Run and schedule multiple remote backup jobs from one backup host
+- **Pulled Snapshot Verification**: Validate pulled manifests, database dumps, and volume archives after each run
 - **Coolify API Integration**: API-driven project and resource discovery
 - **Interactive & CLI**: Both menu-based and command-line flag usage
 

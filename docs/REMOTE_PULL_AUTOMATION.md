@@ -1,6 +1,6 @@
 # Remote Pull Automation
 
-This repository includes a pull-based automation flow for backing up a remote Coolify server on a schedule.
+This repository includes a pull-based automation flow for backing up one or more remote Coolify servers on a schedule.
 
 ## What it does
 
@@ -9,6 +9,7 @@ This repository includes a pull-based automation flow for backing up a remote Co
 - Runs `coolify-backup.sh` remotely in `full`, `project`, or `selective` mode
 - Pulls the resulting archive back to your backup host
 - Extracts the archive into separate `files/`, `db/`, and `docker/` snapshot trees
+- Verifies the pulled snapshot and volume archives
 - Applies retention rules for daily, weekly, and monthly snapshots
 
 ## Public repo safety
@@ -23,6 +24,9 @@ This repository includes a pull-based automation flow for backing up a remote Co
 - `ops/remote-pull-backup.sh`: main automation entrypoint
 - `ops/remote-pull-backup.env.example`: example config
 - `ops/install-remote-pull-cron.sh`: installs the recurring cron job
+- `ops/run-remote-pull-jobs.sh`: runs every job config in a directory
+- `ops/install-remote-pull-jobs-cron.sh`: installs one cron line per job config
+- `ops/verify-remote-pull-backup.sh`: verifies a pulled snapshot
 
 ## First-time setup
 
@@ -42,8 +46,33 @@ CONFIG_FILE=/root/.config/coolifybr/remote-pull-backup.env ./ops/remote-pull-bac
 CONFIG_FILE=/root/.config/coolifybr/remote-pull-backup.env ./ops/install-remote-pull-cron.sh
 ```
 
+## Multi-server usage
+
+Place one config per source server in a directory such as:
+
+- `/root/.config/coolifybr/jobs/app-1.env`
+- `/root/.config/coolifybr/jobs/app-2.env`
+
+Then either:
+
+- run them all manually with `./ops/run-remote-pull-jobs.sh`
+- or install cron entries for all of them with `./ops/install-remote-pull-jobs-cron.sh`
+
+Each job config can define its own:
+
+- `BACKUP_JOB_NAME`
+- `LOCAL_BACKUP_ROOT`
+- `SCHEDULE_HOUR`
+- `SCHEDULE_MINUTE`
+- `REMOTE_HOST`
+- `REMOTE_KEY_PATH`
+
 ## Notes
 
 - If SSH key auth is not active yet, the script can bootstrap `authorized_keys` using `REMOTE_PASSWORD`
+- `VERIFY_AFTER_PULL=true` verifies manifest, inventory, database outputs, and local volume archives after each run
+- `DELETE_REMOTE_ARCHIVE_AFTER_PULL=true` removes the remote archive after a successful pull
+- `DELETE_LOCAL_ARCHIVE_AFTER_EXTRACT=true` removes the locally pulled `.tar.gz` after extraction to save disk space
+- `REMOTE_BACKUP_EXTRA_ARGS` lets you pass extra flags to `coolify-backup.sh` on the remote host
 - The remote server must already satisfy the normal CoolifyBR backup requirements
 - For public repositories, keep server-specific wrapper scripts and real config files only on your own infrastructure
