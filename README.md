@@ -8,6 +8,8 @@ Back up your Coolify instances — **fully**, **per-project**, or **selectively*
 
 ## Features
 
+- **Unified CLI**: One `coolifybr` entrypoint for backup, restore, remote pull jobs, verification, and installation
+- **Bootstrap Installer**: Install scripts, CLI symlink, and example config files with one command
 - **3 Backup Modes**: Full (entire instance), Project (per-project), Selective (per-resource)
 - **PostgreSQL Database**: Full dump or per-project JSON export of the Coolify database
 - **Docker Volumes**: Automatic discovery and backup of application data volumes
@@ -29,9 +31,36 @@ Back up your Coolify instances — **fully**, **per-project**, or **selectively*
 - `jq`, `curl`, `tar`, `gzip`
 - For remote transfer: `ssh`, `scp` or `rsync`
 
+## Quick Start
+
+```bash
+git clone https://github.com/oguzdelioglu/CoolifyBR.git
+cd CoolifyBR
+./scripts/install.sh --profile source-server
+coolifybr help
+```
+
+For a backup host / NAS:
+
+```bash
+./scripts/install.sh --profile backup-host
+```
+
+Detailed installer docs: [docs/INSTALL.md](docs/INSTALL.md)
+
 ## Scheduled Pull Backups
 
 If you want a NAS or backup server to periodically connect to a remote Coolify host, trigger a backup there, and pull the archive back, use the automation files documented in [docs/REMOTE_PULL_AUTOMATION.md](docs/REMOTE_PULL_AUTOMATION.md).
+
+Common commands:
+
+```bash
+coolifybr backup --mode full
+coolifybr restore --file /tmp/backup.tar.gz
+coolifybr pull-run
+coolifybr pull-run-jobs
+coolifybr pull-verify /srv/backups/app
+```
 
 ---
 
@@ -42,15 +71,10 @@ Run these steps on the server **where Coolify is currently running** and you wan
 ## 1. Install CoolifyBR
 
 ```bash
-# SSH into your source server
 ssh root@YOUR_SOURCE_SERVER
-
-# Clone the repository
 git clone https://github.com/oguzdelioglu/CoolifyBR.git
 cd CoolifyBR
-
-# Make scripts executable
-chmod +x coolify-backup.sh coolify-restore.sh
+./scripts/install.sh --profile source-server
 ```
 
 ## 2. (Optional) Configure API Token
@@ -77,7 +101,7 @@ COOLIFY_API_TOKEN=your-api-token-here
 Backs up the entire Coolify instance: database, all Docker volumes, SSH keys, environment config, and proxy settings.
 
 ```bash
-sudo ./coolify-backup.sh --mode full
+sudo coolifybr backup --mode full
 ```
 
 ### Project Backup
@@ -85,11 +109,8 @@ sudo ./coolify-backup.sh --mode full
 Backs up one or more specific projects. An interactive menu lets you pick which projects to include.
 
 ```bash
-# Interactive project selection
-sudo ./coolify-backup.sh --mode project
-
-# Or specify a project UUID directly (skip interactive menu)
-sudo ./coolify-backup.sh --mode project --project-uuid abc-123-def
+sudo coolifybr backup --mode project
+sudo coolifybr backup --mode project --project-uuid abc-123-def
 ```
 
 ### Selective Backup
@@ -97,7 +118,7 @@ sudo ./coolify-backup.sh --mode project --project-uuid abc-123-def
 Choose exactly what to include: database, specific container volumes, SSH keys, environment.
 
 ```bash
-sudo ./coolify-backup.sh --mode selective
+sudo coolifybr backup --mode selective
 ```
 
 ### Backup Options
@@ -135,13 +156,13 @@ scp backups/coolify-backup-full-20260308-143000.tar.gz root@NEW_SERVER:/tmp/
 CoolifyBR can transfer the backup directly after creation:
 
 ```bash
-sudo ./coolify-backup.sh --mode full --transfer 192.168.1.100
+sudo coolifybr backup --mode full --transfer 192.168.1.100
 ```
 
 With custom SSH settings:
 
 ```bash
-sudo ./coolify-backup.sh --mode full \
+sudo coolifybr backup --mode full \
   --transfer 192.168.1.100 \
   --transfer-user root \
   --transfer-key ~/.ssh/id_rsa \
@@ -175,15 +196,10 @@ You should see `coolify`, `coolify-db`, `coolify-redis`, `coolify-realtime`, and
 ## 2. Install CoolifyBR on the Target Server
 
 ```bash
-# SSH into your target server
 ssh root@YOUR_TARGET_SERVER
-
-# Clone the repository
 git clone https://github.com/oguzdelioglu/CoolifyBR.git
 cd CoolifyBR
-
-# Make scripts executable
-chmod +x coolify-backup.sh coolify-restore.sh
+./scripts/install.sh --profile source-server
 ```
 
 ## 3. Copy the Backup Archive
@@ -198,7 +214,7 @@ scp /path/to/coolify-backup-full-20260308-143000.tar.gz root@TARGET_SERVER:/tmp/
 ## 4. Run the Restore
 
 ```bash
-sudo ./coolify-restore.sh --file /tmp/coolify-backup-full-20260308-143000.tar.gz
+sudo coolifybr restore --file /tmp/coolify-backup-full-20260308-143000.tar.gz
 ```
 
 The restore script will:
@@ -233,14 +249,9 @@ Options:
 If you only want to restore specific parts:
 
 ```bash
-# Restore only the database, skip everything else
-sudo ./coolify-restore.sh --file /tmp/backup.tar.gz --skip-volumes --skip-ssh --skip-proxy
-
-# Interactive selective mode: choose what to restore
-sudo ./coolify-restore.sh --file /tmp/backup.tar.gz --mode selective
-
-# Non-interactive: restore everything without prompts
-sudo ./coolify-restore.sh --file /tmp/backup.tar.gz --non-interactive
+sudo coolifybr restore --file /tmp/backup.tar.gz --skip-volumes --skip-ssh --skip-proxy
+sudo coolifybr restore --file /tmp/backup.tar.gz --mode selective
+sudo coolifybr restore --file /tmp/backup.tar.gz --non-interactive
 ```
 
 ## 5. Post-Restore Verification

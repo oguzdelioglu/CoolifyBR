@@ -8,6 +8,8 @@ Coolify instance'larınızı **komple**, **proje bazlı** veya **seçici** olara
 
 ## Özellikler
 
+- **Birleşik CLI**: Yedekleme, geri yükleme, uzak pull job'ları, doğrulama ve kurulum için tek `coolifybr` giriş noktası
+- **Kurulum Scripti**: Scriptleri, CLI symlink'ini ve örnek config dosyalarını tek komutla hazırlar
 - **3 Yedekleme Modu**: Full (komple), Project (proje bazlı), Selective (seçici)
 - **PostgreSQL Database**: Coolify veritabanının tam veya proje bazlı yedeği
 - **Docker Volumes**: Uygulama verilerinin otomatik tespiti ve yedeklenmesi
@@ -26,6 +28,23 @@ Coolify instance'larınızı **komple**, **proje bazlı** veya **seçici** olara
 - `jq`, `curl`, `tar`, `gzip`
 - Uzak transfer için: `ssh`, `scp` veya `rsync`
 
+## Hızlı Başlangıç
+
+```bash
+git clone https://github.com/oguzdelioglu/CoolifyBR.git
+cd CoolifyBR
+./scripts/install.sh --profile source-server
+coolifybr help
+```
+
+NAS / yedek sunucu için:
+
+```bash
+./scripts/install.sh --profile backup-host
+```
+
+Kurulum dokümantasyonu: [docs/INSTALL.md](docs/INSTALL.md)
+
 ---
 
 # Yedekleme Kurulumu (Kaynak Sunucu)
@@ -35,15 +54,10 @@ Bu adımları **Coolify'ın halihazırda çalıştığı** ve yedeğini almak is
 ## 1. CoolifyBR'yi Kurun
 
 ```bash
-# Kaynak sunucuya SSH ile bağlanın
 ssh root@KAYNAK_SUNUCU_IP
-
-# Repoyu klonlayın
 git clone https://github.com/oguzdelioglu/CoolifyBR.git
 cd CoolifyBR
-
-# Scriptleri çalıştırılabilir yapın
-chmod +x coolify-backup.sh coolify-restore.sh
+./scripts/install.sh --profile source-server
 ```
 
 ## 2. (Opsiyonel) API Token Ayarlayın
@@ -70,7 +84,7 @@ COOLIFY_API_TOKEN=api-tokeniniz-buraya
 Tüm Coolify instance'ını yedekler: veritabanı, tüm Docker volume'ları, SSH anahtarları, ortam yapılandırması ve proxy ayarları.
 
 ```bash
-sudo ./coolify-backup.sh --mode full
+sudo coolifybr backup --mode full
 ```
 
 ### Proje Bazlı Yedekleme
@@ -78,11 +92,8 @@ sudo ./coolify-backup.sh --mode full
 Bir veya daha fazla belirli projeyi yedekler. İnteraktif menü ile hangi projeleri dahil edeceğinizi seçersiniz.
 
 ```bash
-# İnteraktif proje seçimi
-sudo ./coolify-backup.sh --mode project
-
-# Veya proje UUID'sini doğrudan belirtin (interaktif menüyü atlar)
-sudo ./coolify-backup.sh --mode project --project-uuid abc-123-def
+sudo coolifybr backup --mode project
+sudo coolifybr backup --mode project --project-uuid abc-123-def
 ```
 
 ### Seçici Yedekleme
@@ -90,7 +101,7 @@ sudo ./coolify-backup.sh --mode project --project-uuid abc-123-def
 Tam olarak neyin dahil edileceğini seçin: veritabanı, belirli container volume'ları, SSH anahtarları, ortam yapılandırması.
 
 ```bash
-sudo ./coolify-backup.sh --mode selective
+sudo coolifybr backup --mode selective
 ```
 
 ### Yedekleme Seçenekleri
@@ -128,13 +139,13 @@ scp backups/coolify-backup-full-20260308-143000.tar.gz root@YENI_SUNUCU:/tmp/
 CoolifyBR, yedeği oluşturduktan sonra doğrudan transfer edebilir:
 
 ```bash
-sudo ./coolify-backup.sh --mode full --transfer 192.168.1.100
+sudo coolifybr backup --mode full --transfer 192.168.1.100
 ```
 
 Özel SSH ayarlarıyla:
 
 ```bash
-sudo ./coolify-backup.sh --mode full \
+sudo coolifybr backup --mode full \
   --transfer 192.168.1.100 \
   --transfer-user root \
   --transfer-key ~/.ssh/id_rsa \
@@ -168,15 +179,10 @@ docker ps --filter "name=coolify"
 ## 2. Hedef Sunucuya CoolifyBR Kurun
 
 ```bash
-# Hedef sunucuya SSH ile bağlanın
 ssh root@HEDEF_SUNUCU_IP
-
-# Repoyu klonlayın
 git clone https://github.com/oguzdelioglu/CoolifyBR.git
 cd CoolifyBR
-
-# Scriptleri çalıştırılabilir yapın
-chmod +x coolify-backup.sh coolify-restore.sh
+./scripts/install.sh --profile source-server
 ```
 
 ## 3. Yedek Arşivini Kopyalayın
@@ -191,7 +197,7 @@ scp /yedek/yolu/coolify-backup-full-20260308-143000.tar.gz root@HEDEF_SUNUCU:/tm
 ## 4. Geri Yüklemeyi Çalıştırın
 
 ```bash
-sudo ./coolify-restore.sh --file /tmp/coolify-backup-full-20260308-143000.tar.gz
+sudo coolifybr restore --file /tmp/coolify-backup-full-20260308-143000.tar.gz
 ```
 
 Restore scripti sırasıyla şunları yapar:
@@ -226,14 +232,9 @@ Seçenekler:
 Sadece belirli kısımları geri yüklemek istiyorsanız:
 
 ```bash
-# Sadece veritabanını geri yükle, diğer her şeyi atla
-sudo ./coolify-restore.sh --file /tmp/backup.tar.gz --skip-volumes --skip-ssh --skip-proxy
-
-# İnteraktif seçici mod: neyi geri yükleyeceğinizi seçin
-sudo ./coolify-restore.sh --file /tmp/backup.tar.gz --mode selective
-
-# Sorgusuz: her şeyi sormadan geri yükle
-sudo ./coolify-restore.sh --file /tmp/backup.tar.gz --non-interactive
+sudo coolifybr restore --file /tmp/backup.tar.gz --skip-volumes --skip-ssh --skip-proxy
+sudo coolifybr restore --file /tmp/backup.tar.gz --mode selective
+sudo coolifybr restore --file /tmp/backup.tar.gz --non-interactive
 ```
 
 ## 5. Geri Yükleme Sonrası Doğrulama
