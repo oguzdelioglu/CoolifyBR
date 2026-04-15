@@ -15,6 +15,7 @@ Back up your Coolify instances — **fully**, **per-project**, or **selectively*
 - **APP_KEY Management**: Automatic APP_PREVIOUS_KEYS update on restore
 - **Proxy Config**: Traefik/Caddy configuration backup
 - **Remote Transfer**: Automatic SCP/rsync transfer to destination server
+- **Remote Pull Automation**: Schedule backups from a separate backup host that connects to the source server, runs the backup, and pulls archives back
 - **Coolify API Integration**: API-driven project and resource discovery
 - **Interactive & CLI**: Both menu-based and command-line flag usage
 
@@ -25,6 +26,10 @@ Back up your Coolify instances — **fully**, **per-project**, or **selectively*
 - Docker
 - `jq`, `curl`, `tar`, `gzip`
 - For remote transfer: `ssh`, `scp` or `rsync`
+
+## Scheduled Pull Backups
+
+If you want a NAS or backup server to periodically connect to a remote Coolify host, trigger a backup there, and pull the archive back, use the automation files documented in [docs/REMOTE_PULL_AUTOMATION.md](docs/REMOTE_PULL_AUTOMATION.md).
 
 ---
 

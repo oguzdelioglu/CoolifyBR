@@ -4,6 +4,8 @@ backups/
 
 # Local config
 config.local.env
+ops/*.env
+ops/*.log
 
 # Temp files
 /tmp/
