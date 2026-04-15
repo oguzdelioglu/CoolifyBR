@@ -9,26 +9,37 @@ usage() {
 CoolifyBR unified CLI
 
 Usage:
-  coolifybr <command> [args...]
+  coolifybr <command> [subcommand] [args...]
 
 Commands:
-  backup                 Run coolify-backup.sh
-  restore                Run coolify-restore.sh
-  pull-run               Run one remote pull backup job
-  pull-run-jobs          Run all remote pull jobs in a config directory
-  pull-verify            Verify a pulled snapshot
-  pull-install-cron      Install cron for one remote pull job
-  pull-install-jobs-cron Install cron entries for all remote pull jobs
-  install                Run the installer/bootstrap script
-  help                   Show this help
+  backup                  Run local/source backup flow
+  restore                 Run restore flow
+  install                 Bootstrap CoolifyBR on this machine
+  doctor                  Check machine readiness
+  init job                Create a new remote pull job config
+  pull run                Run one remote pull backup job
+  pull verify             Verify a pulled snapshot
+  pull jobs run           Run all remote pull jobs from a directory
+  cron install            Install cron for one remote pull job
+  cron install-jobs       Install cron entries for every job config
+  help                    Show this help
+
+Legacy aliases:
+  pull-run
+  pull-run-jobs
+  pull-verify
+  pull-install-cron
+  pull-install-jobs-cron
 
 Examples:
-  ./coolifybr backup --mode full
-  ./coolifybr restore --file /tmp/backup.tar.gz
-  CONFIG_FILE=/root/.config/coolifybr/jobs/app.env ./coolifybr pull-run
-  CONFIG_DIR=/root/.config/coolifybr/jobs ./coolifybr pull-run-jobs
-  ./coolifybr pull-verify /srv/backups/app 20260415T021924Z
-  ./coolifybr install --profile backup-host
+  coolifybr backup --mode full
+  coolifybr restore --file /tmp/backup.tar.gz
+  coolifybr install --profile backup-host
+  coolifybr doctor --profile backup-host
+  coolifybr init job --name app-1
+  CONFIG_FILE=/root/.config/coolifybr/jobs/app-1.env coolifybr pull run
+  CONFIG_DIR=/root/.config/coolifybr/jobs coolifybr pull jobs run
+  coolifybr cron install
 EOF
 }
 
@@ -44,6 +55,74 @@ case "$command" in
     restore)
         exec "$SCRIPT_DIR/coolify-restore.sh" "$@"
         ;;
+    install)
+        exec "$SCRIPT_DIR/scripts/install.sh" "$@"
+        ;;
+    doctor)
+        exec "$SCRIPT_DIR/scripts/doctor.sh" "$@"
+        ;;
+    init)
+        sub="${1:-}"
+        [[ $# -gt 0 ]] && shift || true
+        case "$sub" in
+            job)
+                exec "$SCRIPT_DIR/scripts/init-job.sh" "$@"
+                ;;
+            *)
+                echo "Unknown init subcommand: ${sub:-<empty>}" >&2
+                usage >&2
+                exit 1
+                ;;
+        esac
+        ;;
+    pull)
+        sub="${1:-}"
+        [[ $# -gt 0 ]] && shift || true
+        case "$sub" in
+            run)
+                exec "$SCRIPT_DIR/ops/remote-pull-backup.sh" "$@"
+                ;;
+            verify)
+                exec "$SCRIPT_DIR/ops/verify-remote-pull-backup.sh" "$@"
+                ;;
+            jobs)
+                sub2="${1:-}"
+                [[ $# -gt 0 ]] && shift || true
+                case "$sub2" in
+                    run)
+                        exec "$SCRIPT_DIR/ops/run-remote-pull-jobs.sh" "$@"
+                        ;;
+                    *)
+                        echo "Unknown pull jobs subcommand: ${sub2:-<empty>}" >&2
+                        usage >&2
+                        exit 1
+                        ;;
+                esac
+                ;;
+            *)
+                echo "Unknown pull subcommand: ${sub:-<empty>}" >&2
+                usage >&2
+                exit 1
+                ;;
+        esac
+        ;;
+    cron)
+        sub="${1:-}"
+        [[ $# -gt 0 ]] && shift || true
+        case "$sub" in
+            install)
+                exec "$SCRIPT_DIR/ops/install-remote-pull-cron.sh" "$@"
+                ;;
+            install-jobs)
+                exec "$SCRIPT_DIR/ops/install-remote-pull-jobs-cron.sh" "$@"
+                ;;
+            *)
+                echo "Unknown cron subcommand: ${sub:-<empty>}" >&2
+                usage >&2
+                exit 1
+                ;;
+        esac
+        ;;
     pull-run)
         exec "$SCRIPT_DIR/ops/remote-pull-backup.sh" "$@"
         ;;
@@ -58,9 +137,6 @@ case "$command" in
         ;;
     pull-install-jobs-cron)
         exec "$SCRIPT_DIR/ops/install-remote-pull-jobs-cron.sh" "$@"
-        ;;
-    install)
-        exec "$SCRIPT_DIR/scripts/install.sh" "$@"
         ;;
     help|-h|--help)
         usage

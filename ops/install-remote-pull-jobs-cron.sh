@@ -5,6 +5,8 @@ set -euo pipefail
 REPO_DIR="${REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 CONFIG_DIR="${CONFIG_DIR:-/root/.config/coolifybr/jobs}"
 CRON_FILE="${CRON_FILE:-/etc/crontabs/root}"
+# shellcheck source=/dev/null
+source "$REPO_DIR/scripts/lib/bootstrap.sh"
 
 if [[ ! -d "$CONFIG_DIR" ]]; then
     echo "Missing config directory: $CONFIG_DIR" >&2
@@ -31,13 +33,7 @@ for config in "${configs[@]}"; do
     SCHEDULE_HOUR="${SCHEDULE_HOUR:-2}"
 
     mkdir -p "${LOCAL_BACKUP_ROOT}/logs"
-    printf '%s %s * * * cd %s && CONFIG_FILE=%s %s/ops/remote-pull-backup.sh >> %s/logs/cron.log 2>&1\n' \
-        "$SCHEDULE_MINUTE" \
-        "$SCHEDULE_HOUR" \
-        "$REPO_DIR" \
-        "$config" \
-        "$REPO_DIR" \
-        "$LOCAL_BACKUP_ROOT" >> "${CRON_FILE}.tmp"
+    cron_line_for_job "$REPO_DIR" "$config" "$LOCAL_BACKUP_ROOT" "$SCHEDULE_HOUR" "$SCHEDULE_MINUTE" >> "${CRON_FILE}.tmp"
 done
 
 mv "${CRON_FILE}.tmp" "$CRON_FILE"

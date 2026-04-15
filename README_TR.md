@@ -10,6 +10,8 @@ Coolify instance'larınızı **komple**, **proje bazlı** veya **seçici** olara
 
 - **Birleşik CLI**: Yedekleme, geri yükleme, uzak pull job'ları, doğrulama ve kurulum için tek `coolifybr` giriş noktası
 - **Kurulum Scripti**: Scriptleri, CLI symlink'ini ve örnek config dosyalarını tek komutla hazırlar
+- **Multi-Server Pull Job Desteği**: Tek yedek sunucudan birden fazla uzak Coolify kaynağını yönetir
+- **Doctor & Init Job Akışları**: Ortam doğrulama ve yeni job scaffold komutları sağlar
 - **3 Yedekleme Modu**: Full (komple), Project (proje bazlı), Selective (seçici)
 - **PostgreSQL Database**: Coolify veritabanının tam veya proje bazlı yedeği
 - **Docker Volumes**: Uygulama verilerinin otomatik tespiti ve yedeklenmesi
@@ -44,6 +46,16 @@ NAS / yedek sunucu için:
 ```
 
 Kurulum dokümantasyonu: [docs/INSTALL.md](docs/INSTALL.md)
+
+Sık kullanılan komutlar:
+
+```bash
+coolifybr backup --mode full
+coolifybr restore --file /tmp/backup.tar.gz
+coolifybr doctor --profile backup-host
+coolifybr init job --name app-1
+coolifybr pull-run-jobs
+```
 
 ---
 

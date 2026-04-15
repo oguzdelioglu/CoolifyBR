@@ -57,6 +57,8 @@ Common commands:
 ```bash
 coolifybr backup --mode full
 coolifybr restore --file /tmp/backup.tar.gz
+coolifybr doctor --profile backup-host
+coolifybr init job --name app-1
 coolifybr pull-run
 coolifybr pull-run-jobs
 coolifybr pull-verify /srv/backups/app

@@ -36,6 +36,8 @@ Main commands:
 
 - `coolifybr backup`
 - `coolifybr restore`
+- `coolifybr doctor`
+- `coolifybr init job --name app-1`
 - `coolifybr pull-run`
 - `coolifybr pull-run-jobs`
 - `coolifybr pull-install-cron`

@@ -27,6 +27,8 @@ This repository includes a pull-based automation flow for backing up one or more
 - `ops/run-remote-pull-jobs.sh`: runs every job config in a directory
 - `ops/install-remote-pull-jobs-cron.sh`: installs one cron line per job config
 - `ops/verify-remote-pull-backup.sh`: verifies a pulled snapshot
+- `scripts/init-job.sh`: creates a new external job config scaffold
+- `scripts/doctor.sh`: checks backup-host readiness
 
 ## First-time setup
 
@@ -44,6 +46,15 @@ CONFIG_FILE=/root/.config/coolifybr/remote-pull-backup.env ./ops/remote-pull-bac
 
 ```bash
 CONFIG_FILE=/root/.config/coolifybr/remote-pull-backup.env ./ops/install-remote-pull-cron.sh
+```
+
+Or use the unified CLI:
+
+```bash
+coolifybr doctor --profile backup-host
+coolifybr init job --name app-1
+coolifybr pull run
+coolifybr cron install
 ```
 
 ## Multi-server usage

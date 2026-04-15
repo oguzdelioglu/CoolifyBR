@@ -4,11 +4,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/lib/bootstrap.sh"
 
 PROFILE="source-server"
 INSTALL_DIR="/usr/local/bin"
-CONFIG_HOME="${XDG_CONFIG_HOME:-/root/.config}/coolifybr"
+CONFIG_HOME="$(coolifybr_config_home)"
 LINK_NAME="coolifybr"
+AUTO_INSTALL_DEPS=true
+INSTALL_CRON=false
 
 usage() {
     cat <<EOF
@@ -21,6 +25,8 @@ Options:
   --profile NAME     Install profile: source-server, backup-host, full (default: ${PROFILE})
   --install-dir DIR  Directory for the coolifybr symlink (default: ${INSTALL_DIR})
   --config-home DIR  Config home for example files (default: ${CONFIG_HOME})
+  --no-auto-deps     Do not attempt dependency installation
+  --install-cron     Install cron immediately for backup-host/full profiles
   -h, --help         Show this help
 
 Profiles:
@@ -44,6 +50,14 @@ while [[ $# -gt 0 ]]; do
             CONFIG_HOME="$2"
             shift 2
             ;;
+        --no-auto-deps)
+            AUTO_INSTALL_DEPS=false
+            shift
+            ;;
+        --install-cron)
+            INSTALL_CRON=true
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -55,13 +69,6 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-
-require_cmd() {
-    command -v "$1" >/dev/null 2>&1 || {
-        echo "Missing command: $1" >&2
-        exit 1
-    }
-}
 
 install_file_mode() {
     local mode="$1"
@@ -93,7 +100,8 @@ Config home:  $CONFIG_HOME
 Next steps:
   1. Review README.md
   2. Fill any copied example config files
-  3. Run 'coolifybr help'
+  3. Run 'coolifybr doctor --profile $PROFILE'
+  4. Run 'coolifybr help'
 EOF
 }
 
@@ -101,8 +109,13 @@ require_cmd bash
 require_cmd chmod
 require_cmd mkdir
 require_cmd ln
+require_cmd cp
 
 mkdir -p "$INSTALL_DIR" "$CONFIG_HOME"
+
+if bool_is_true "$AUTO_INSTALL_DEPS"; then
+    attempt_dependency_install "$PROFILE" || true
+fi
 
 ln -sfn "$REPO_DIR/coolifybr" "$INSTALL_DIR/$LINK_NAME"
 install_file_mode 755 "$REPO_DIR/coolifybr"
@@ -114,6 +127,8 @@ install_file_mode 755 "$REPO_DIR/ops/install-remote-pull-cron.sh"
 install_file_mode 755 "$REPO_DIR/ops/install-remote-pull-jobs-cron.sh"
 install_file_mode 755 "$REPO_DIR/ops/verify-remote-pull-backup.sh"
 install_file_mode 755 "$REPO_DIR/scripts/install.sh"
+install_file_mode 755 "$REPO_DIR/scripts/doctor.sh"
+install_file_mode 755 "$REPO_DIR/scripts/init-job.sh"
 
 case "$PROFILE" in
     source-server)
@@ -123,12 +138,18 @@ case "$PROFILE" in
         mkdir -p "$CONFIG_HOME/jobs"
         copy_if_missing "$REPO_DIR/ops/remote-pull-backup.env.example" "$CONFIG_HOME/remote-pull-backup.env"
         copy_if_missing "$REPO_DIR/ops/remote-pull-backup.env.example" "$CONFIG_HOME/jobs/example.env"
+        if bool_is_true "$INSTALL_CRON" && [[ -f "$CONFIG_HOME/remote-pull-backup.env" ]]; then
+            CONFIG_FILE="$CONFIG_HOME/remote-pull-backup.env" "$REPO_DIR/ops/install-remote-pull-cron.sh"
+        fi
         ;;
     full)
         copy_if_missing "$REPO_DIR/config.env" "$CONFIG_HOME/config.env"
         mkdir -p "$CONFIG_HOME/jobs"
         copy_if_missing "$REPO_DIR/ops/remote-pull-backup.env.example" "$CONFIG_HOME/remote-pull-backup.env"
         copy_if_missing "$REPO_DIR/ops/remote-pull-backup.env.example" "$CONFIG_HOME/jobs/example.env"
+        if bool_is_true "$INSTALL_CRON" && [[ -f "$CONFIG_HOME/remote-pull-backup.env" ]]; then
+            CONFIG_FILE="$CONFIG_HOME/remote-pull-backup.env" "$REPO_DIR/ops/install-remote-pull-cron.sh"
+        fi
         ;;
     *)
         echo "Unsupported profile: $PROFILE" >&2

@@ -5,6 +5,9 @@ set -euo pipefail
 REPO_DIR="${REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 CONFIG_FILE="${CONFIG_FILE:-/root/.config/coolifybr/remote-pull-backup.env}"
 CRON_FILE="${CRON_FILE:-/etc/crontabs/root}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$REPO_DIR/scripts/lib/bootstrap.sh"
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
     echo "Missing config file: $CONFIG_FILE" >&2
@@ -18,7 +21,7 @@ BACKUP_JOB_NAME="${BACKUP_JOB_NAME:-remote-coolify}"
 LOCAL_BACKUP_ROOT="${LOCAL_BACKUP_ROOT:-/srv/backups/$BACKUP_JOB_NAME}"
 SCHEDULE_MINUTE="${SCHEDULE_MINUTE:-30}"
 SCHEDULE_HOUR="${SCHEDULE_HOUR:-2}"
-CRON_LINE="${SCHEDULE_MINUTE} ${SCHEDULE_HOUR} * * * cd ${REPO_DIR} && CONFIG_FILE=${CONFIG_FILE} ${REPO_DIR}/ops/remote-pull-backup.sh >> ${LOCAL_BACKUP_ROOT}/logs/cron.log 2>&1"
+CRON_LINE="$(cron_line_for_job "$REPO_DIR" "$CONFIG_FILE" "$LOCAL_BACKUP_ROOT" "$SCHEDULE_HOUR" "$SCHEDULE_MINUTE")"
 
 mkdir -p "$(dirname "$CRON_FILE")" "${LOCAL_BACKUP_ROOT}/logs"
 touch "$CRON_FILE"
