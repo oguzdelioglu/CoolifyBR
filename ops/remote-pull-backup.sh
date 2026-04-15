@@ -363,7 +363,7 @@ prune_snapshots() {
     for id in "${snapshot_ids[@]}"; do
         [[ -n "${keep_map[$id]:-}" ]] && continue
         log INFO "Pruning snapshot $id"
-        rm -rf "$FILES_DIR/$id" "$DB_DIR/$id" "$DOCKER_DIR/$id"
+        rm -rf "${FILES_DIR:?}/$id" "${DB_DIR:?}/$id" "${DOCKER_DIR:?}/$id"
     done
 }
 
@@ -396,7 +396,8 @@ main() {
 
     local local_snapshot_dir="$FILES_DIR/$RUN_ID"
     mkdir -p "$local_snapshot_dir"
-    local local_archive="$local_snapshot_dir/$(basename "$remote_archive")"
+    local local_archive
+    local_archive="$local_snapshot_dir/$(basename "$remote_archive")"
     LOCAL_ARCHIVE_PATH="$local_archive"
 
     scp_from_remote "$remote_archive" "$local_archive"

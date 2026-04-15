@@ -140,11 +140,17 @@ check_dependencies() {
 COOLIFY_BASE="/data/coolify"
 COOLIFY_SOURCE="$COOLIFY_BASE/source"
 COOLIFY_ENV="$COOLIFY_SOURCE/.env"
+# shellcheck disable=SC2034
 COOLIFY_SSH_DIR="$COOLIFY_BASE/ssh/keys"
+# shellcheck disable=SC2034
 COOLIFY_BACKUPS_DIR="$COOLIFY_BASE/backups"
+# shellcheck disable=SC2034
 COOLIFY_DB_CONTAINER="coolify-db"
+# shellcheck disable=SC2034
 COOLIFY_DB_USER="coolify"
+# shellcheck disable=SC2034
 COOLIFY_DB_NAME="coolify"
+# shellcheck disable=SC2034
 COOLIFY_CONTAINERS=("coolify" "coolify-db" "coolify-redis" "coolify-realtime")
 
 get_app_key() {

@@ -209,6 +209,7 @@ select_projects() {
 # ============================================================
 select_resources() {
     local temp_dir="$1"
+    : "$temp_dir"
 
     log_step "Discovering all resources..."
 
@@ -473,7 +474,8 @@ package_backup() {
         transfer_auto "$archive_file" "$TRANSFER_HOST" "/tmp/" "$TRANSFER_USER" "$TRANSFER_KEY" "$TRANSFER_PORT"
 
         if prompt_yes_no "Execute restore on remote server?"; then
-            local remote_archive="/tmp/$(basename "$archive_file")"
+            local remote_archive
+            remote_archive="/tmp/$(basename "$archive_file")"
             transfer_remote_restore "$TRANSFER_HOST" "$remote_archive" "$TRANSFER_USER" "$TRANSFER_KEY" "$TRANSFER_PORT"
         fi
     fi
@@ -503,6 +505,7 @@ main() {
 
     # Load config if exists
     if [[ -f "$SCRIPT_DIR/config.env" ]]; then
+        # shellcheck source=/dev/null
         source "$SCRIPT_DIR/config.env"
     fi
 
@@ -516,6 +519,10 @@ main() {
     # Set default output directory
     OUTPUT_DIR="${OUTPUT_DIR:-${SCRIPT_DIR}/backups}"
     mkdir -p "$OUTPUT_DIR"
+
+    if [[ "$NON_INTERACTIVE" == true ]]; then
+        log_info "Non-interactive mode enabled"
+    fi
 
     # Select mode
     select_mode

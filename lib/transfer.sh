@@ -62,7 +62,10 @@ transfer_scp() {
     if [[ -n "$ssh_key" && -f "$ssh_key" ]]; then
         ssh_args_base+=(-i "$ssh_key")
     fi
-    ssh "${ssh_args_base[@]}" "${remote_user}@${remote_host}" "mkdir -p ${remote_path}" 2>/dev/null
+    local remote_cmd
+    printf -v remote_cmd 'mkdir -p %q' "$remote_path"
+    # shellcheck disable=SC2029
+    ssh "${ssh_args_base[@]}" "${remote_user}@${remote_host}" "$remote_cmd" 2>/dev/null
 
     log_substep "Starting transfer..."
     if scp "${scp_args[@]}" "$local_file" "${remote_user}@${remote_host}:${remote_path}" 2>/dev/null; then
@@ -112,7 +115,10 @@ transfer_rsync() {
     if [[ -n "$ssh_key" && -f "$ssh_key" ]]; then
         ssh_args_base+=(-i "$ssh_key")
     fi
-    ssh "${ssh_args_base[@]}" "${remote_user}@${remote_host}" "mkdir -p ${remote_path}" 2>/dev/null
+    local remote_cmd
+    printf -v remote_cmd 'mkdir -p %q' "$remote_path"
+    # shellcheck disable=SC2029
+    ssh "${ssh_args_base[@]}" "${remote_user}@${remote_host}" "$remote_cmd" 2>/dev/null
 
     log_substep "Starting rsync transfer..."
     if rsync -avz --progress -e "$ssh_cmd" \
@@ -194,8 +200,11 @@ transfer_remote_restore() {
 
     # Execute restore
     log_substep "Running restore on remote server..."
+    local restore_cmd
+    printf -v restore_cmd 'cd /tmp && ./coolify-restore.sh --file %q --non-interactive' "$remote_backup_path"
+    # shellcheck disable=SC2029
     ssh "${ssh_args[@]}" "${remote_user}@${remote_host}" \
-        "cd /tmp && ./coolify-restore.sh --file '${remote_backup_path}' --non-interactive" 2>&1
+        "$restore_cmd" 2>&1
 
     local exit_code=$?
     if [[ $exit_code -eq 0 ]]; then

@@ -209,9 +209,9 @@ db_restore_full() {
 
     # Restore from dump
     log_substep "Restoring database from dump..."
-    if cat "$dump_file" | docker exec -i "$COOLIFY_DB_CONTAINER" \
+    if docker exec -i "$COOLIFY_DB_CONTAINER" \
         pg_restore --verbose --clean --no-acl --no-owner \
-        -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" 2>/dev/null; then
+        -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" < "$dump_file" 2>/dev/null; then
         log_success "Database restored successfully"
     else
         # pg_restore often returns non-zero due to warnings, verify table count
@@ -394,17 +394,19 @@ db_restore_project_data() {
     done
 
     # Update sequences after inserts
-    echo "SELECT setval(pg_get_serial_sequence('projects', 'id'), COALESCE(MAX(id), 1)) FROM projects;" >> "$sql_file"
-    echo "SELECT setval(pg_get_serial_sequence('environments', 'id'), COALESCE(MAX(id), 1)) FROM environments;" >> "$sql_file"
-    echo "SELECT setval(pg_get_serial_sequence('applications', 'id'), COALESCE(MAX(id), 1)) FROM applications;" >> "$sql_file"
+    {
+        echo "SELECT setval(pg_get_serial_sequence('projects', 'id'), COALESCE(MAX(id), 1)) FROM projects;"
+        echo "SELECT setval(pg_get_serial_sequence('environments', 'id'), COALESCE(MAX(id), 1)) FROM environments;"
+        echo "SELECT setval(pg_get_serial_sequence('applications', 'id'), COALESCE(MAX(id), 1)) FROM applications;"
+    } >> "$sql_file"
 
     echo "COMMIT;" >> "$sql_file"
 
     # Execute SQL (capture errors)
     log_substep "Executing restore SQL..."
     local sql_output
-    sql_output=$(cat "$sql_file" | docker exec -i "$COOLIFY_DB_CONTAINER" \
-        psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" 2>&1 || true)
+    sql_output=$(docker exec -i "$COOLIFY_DB_CONTAINER" \
+        psql -U "$COOLIFY_DB_USER" -d "$COOLIFY_DB_NAME" < "$sql_file" 2>&1 || true)
 
     # Check for errors in output
     if echo "$sql_output" | grep -qi "error" 2>/dev/null; then

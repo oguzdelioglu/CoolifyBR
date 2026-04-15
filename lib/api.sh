@@ -15,6 +15,7 @@ api_init() {
 
     if [[ -z "$COOLIFY_API_TOKEN" ]]; then
         if [[ -f "${SCRIPT_DIR:-}/config.env" ]]; then
+            # shellcheck source=/dev/null
             source "${SCRIPT_DIR}/config.env"
         fi
     fi
@@ -274,7 +275,7 @@ discover_all_volumes() {
     fi
 
     local all_volumes=()
-    while IFS=$'\t' read -r name id image; do
+    while IFS=$'\t' read -r name _id _image; do
         local volumes
         volumes=$(get_container_volumes "$name" 2>/dev/null)
         if [[ -n "$volumes" ]]; then

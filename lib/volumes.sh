@@ -140,7 +140,7 @@ volume_backup_for_container() {
     fi
 
     local volume_names=()
-    while IFS='|' read -r name dest; do
+    while IFS='|' read -r name _dest; do
         volume_names+=("$name")
     done <<< "$volumes"
 
@@ -176,8 +176,8 @@ volume_backup_all() {
     while IFS= read -r container; do
         local vols
         vols=$(volume_list_for_container "$container")
-        while IFS='|' read -r name dest; do
-            if [[ -n "$name" ]] && [[ ! " ${seen_volumes[*]+${seen_volumes[*]}} " =~ " $name " ]]; then
+        while IFS='|' read -r name _dest; do
+            if [[ -n "$name" ]] && [[ " ${seen_volumes[*]+${seen_volumes[*]}} " != *" $name "* ]]; then
                 all_volumes+=("$name")
                 seen_volumes+=("$name")
             fi
@@ -257,8 +257,8 @@ volume_backup_for_project() {
             while IFS= read -r container; do
                 local vols
                 vols=$(volume_list_for_container "$container")
-                while IFS='|' read -r name dest; do
-                    if [[ -n "$name" ]] && [[ ! " ${seen_volumes[*]+${seen_volumes[*]}} " =~ " $name " ]]; then
+                while IFS='|' read -r name _dest; do
+                    if [[ -n "$name" ]] && [[ " ${seen_volumes[*]+${seen_volumes[*]}} " != *" $name "* ]]; then
                         all_volumes+=("$name")
                         seen_volumes+=("$name")
                     fi
@@ -383,7 +383,8 @@ volume_restore_all() {
 # ============================================================
 bindmount_restore() {
     local backup_file="$1"
-    local target_base="${2:-/}"
+    local _target_base="${2:-/}"
+    : "$_target_base"
 
     local original_path
     original_path=$(basename "$backup_file" | sed 's/^bind-//' | sed 's/\.tar\.gz$//' | sed 's/_/\//g')
