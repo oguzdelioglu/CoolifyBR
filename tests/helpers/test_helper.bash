@@ -1,3 +1,11 @@
+repo_root() {
+  cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd
+}
+
+repo_path() {
+  printf '%s/%s\n' "$(repo_root)" "$1"
+}
+
 setup_test_tmp() {
   export TEST_TMPDIR
   TEST_TMPDIR="$(mktemp -d)"
@@ -22,7 +30,7 @@ EOF
 copy_repo_cli_fixture() {
   local fixture="$TEST_TMPDIR/fixture"
   mkdir -p "$fixture/ops" "$fixture/scripts"
-  cp /volume1/home/odel/projects/CoolifyBR/coolifybr "$fixture/coolifybr"
+  cp "$(repo_path coolifybr)" "$fixture/coolifybr"
   chmod 755 "$fixture/coolifybr"
   printf '#!/usr/bin/env bash\necho backup-stub "$@"\n' >"$fixture/coolify-backup.sh"
   printf '#!/usr/bin/env bash\necho restore-stub "$@"\n' >"$fixture/coolify-restore.sh"

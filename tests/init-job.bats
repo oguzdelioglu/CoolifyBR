@@ -12,7 +12,9 @@ teardown() {
 
 @test "init-job creates config file with provided values" {
   local config_dir="$TEST_TMPDIR/jobs"
-  run /volume1/home/odel/projects/CoolifyBR/scripts/init-job.sh \
+  local script
+  script="$(repo_path scripts/init-job.sh)"
+  run "$script" \
     --name app1 \
     --host 198.51.100.10 \
     --user deploy \

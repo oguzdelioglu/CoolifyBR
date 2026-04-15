@@ -23,7 +23,9 @@ teardown() {
 }
 
 @test "run-remote-pull-jobs executes all configs" {
-  run env CONFIG_DIR="$TEST_TMPDIR/jobs" ENTRYPOINT="$TEST_TMPDIR/entrypoint.sh" /volume1/home/odel/projects/CoolifyBR/ops/run-remote-pull-jobs.sh
+  local script
+  script="$(repo_path ops/run-remote-pull-jobs.sh)"
+  run env CONFIG_DIR="$TEST_TMPDIR/jobs" ENTRYPOINT="$TEST_TMPDIR/entrypoint.sh" "$script"
   [ "$status" -eq 0 ]
   [[ "$output" == *"entry:$TEST_TMPDIR/jobs/app1.env"* ]]
   [[ "$output" == *"entry:$TEST_TMPDIR/jobs/app2.env"* ]]

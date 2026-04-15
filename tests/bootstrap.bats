@@ -4,7 +4,7 @@ load helpers/test_helper.bash
 
 setup() {
   setup_test_tmp
-  source /volume1/home/odel/projects/CoolifyBR/scripts/lib/bootstrap.sh
+  source "$(repo_path scripts/lib/bootstrap.sh)"
 }
 
 teardown() {
