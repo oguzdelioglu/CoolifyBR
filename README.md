@@ -139,6 +139,7 @@ Options:
   --transfer-key PATH  SSH key for remote transfer
   --transfer-port PORT Remote SSH port (default: 22)
   --skip-volumes       Skip Docker volume backups
+  --exclude-volume PAT Skip volumes matching glob PAT (repeatable)
   --skip-db            Skip database backup
   --non-interactive    Run without prompts (use defaults)
 ```

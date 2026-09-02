@@ -132,6 +132,7 @@ Seçenekler:
   --transfer-key PATH  Uzak transfer için SSH anahtarı
   --transfer-port PORT Uzak SSH portu (varsayılan: 22)
   --skip-volumes       Docker volume yedeklerini atla
+  --exclude-volume PAT Glob PAT ile eslesen volumeleri atla (tekrarlanabilir)
   --skip-db            Veritabanı yedeğini atla
   --non-interactive    Sorgusuz çalıştır
 ```

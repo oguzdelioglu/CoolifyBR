@@ -33,6 +33,9 @@ TRANSFER_PORT="22"
 NON_INTERACTIVE=false
 SKIP_VOLUMES=false
 SKIP_DB=false
+# Glob patterns of Docker volumes to leave out of the archive (see
+# volume_is_excluded in lib/volumes.sh). Exported so the library sees it.
+EXCLUDE_VOLUME_PATTERNS=()
 
 usage() {
     cat <<EOF
@@ -54,6 +57,9 @@ ${BOLD}Options:${NC}
   --transfer-key PATH  SSH key for remote transfer
   --transfer-port PORT SSH port for remote transfer (default: 22)
   --skip-volumes       Skip Docker volume backups
+  --exclude-volume PAT Skip volumes matching glob PAT (repeatable). Use for
+                       volumes backed up another way (a live database data
+                       directory) or too large to be worth archiving.
   --skip-db            Skip database backup
   --non-interactive    Run without prompts (use defaults)
   -h, --help           Show this help message
@@ -86,6 +92,9 @@ parse_args() {
                 TRANSFER_PORT="$2"; shift 2 ;;
             --skip-volumes)
                 SKIP_VOLUMES=true; shift ;;
+            --exclude-volume)
+                [[ -n "${2:-}" ]] || die "--exclude-volume needs a pattern"
+                EXCLUDE_VOLUME_PATTERNS+=("$2"); shift 2 ;;
             --skip-db)
                 SKIP_DB=true; shift ;;
             --non-interactive)
@@ -451,11 +460,14 @@ package_backup() {
     local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
     local si=0
     while kill -0 "$tar_pid" 2>/dev/null; do
-        printf "\r  ${CYAN}${spin:$si:1}${NC} Compressing archive (%s)..." "$(format_size "${raw_size:-0}")"
+        # See the note in lib/common.sh spinner(): animate only on a terminal.
+        if [[ -t 1 ]]; then
+            printf "\r  ${CYAN}${spin:$si:1}${NC} Compressing archive (%s)..." "$(format_size "${raw_size:-0}")"
+        fi
         si=$(( (si + 1) % ${#spin} ))
         sleep 0.1
     done
-    printf "\r%-80s\r" ""
+    if [[ -t 1 ]]; then printf "\r%-80s\r" ""; fi
 
     wait "$tar_pid"
 

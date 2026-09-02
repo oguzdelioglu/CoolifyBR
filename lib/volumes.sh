@@ -78,11 +78,14 @@ volume_backup() {
     local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
     local i=0
     while kill -0 "$tar_pid" 2>/dev/null; do
-        printf "\r  ${CYAN}${spin:$i:1}${NC} Compressing %s (%s)..." "$volume_name" "$vol_size_fmt"
+        # See the note in lib/common.sh spinner(): animate only on a terminal.
+        if [[ -t 1 ]]; then
+            printf "\r  ${CYAN}${spin:$i:1}${NC} Compressing %s (%s)..." "$volume_name" "$vol_size_fmt"
+        fi
         i=$(( (i + 1) % ${#spin} ))
         sleep 0.1
     done
-    printf "\r%-80s\r" ""
+    if [[ -t 1 ]]; then printf "\r%-80s\r" ""; fi
 
     # Check tar exit code
     wait "$tar_pid"
@@ -147,6 +150,23 @@ volume_backup_for_container() {
     volume_backup_multiple "$output_dir" "${volume_names[@]}"
 }
 
+# True when a volume name matches one of EXCLUDE_VOLUME_PATTERNS.
+#
+# Some volumes are actively harmful to include: a tar of a running Postgres data
+# directory is not a consistent backup (use the database dump for that), and a
+# multi-gigabyte metrics or log volume can push the archive past the free space
+# on the source host — which is how you turn a backup run into an outage. Each
+# pattern is a shell glob matched against the full volume name.
+volume_is_excluded() {
+    local name="$1"
+    local pattern
+    for pattern in ${EXCLUDE_VOLUME_PATTERNS[@]+"${EXCLUDE_VOLUME_PATTERNS[@]}"}; do
+        # shellcheck disable=SC2053  # glob match is intentional
+        [[ "$name" == $pattern ]] && return 0
+    done
+    return 1
+}
+
 # Backup all Coolify-managed volumes
 volume_backup_all() {
     local output_dir="$1"
@@ -189,8 +209,29 @@ volume_backup_all() {
         return 0
     fi
 
-    log_info "Found ${#all_volumes[@]} unique volumes to backup"
-    volume_backup_multiple "$output_dir" "${all_volumes[@]}"
+    local kept_volumes=()
+    local skipped=0
+    local vol
+    for vol in "${all_volumes[@]}"; do
+        if volume_is_excluded "$vol"; then
+            log_info "Skipping excluded volume: $vol"
+            skipped=$((skipped + 1))
+        else
+            kept_volumes+=("$vol")
+        fi
+    done
+
+    if [[ ${#kept_volumes[@]} -eq 0 ]]; then
+        log_info "All ${#all_volumes[@]} volumes were excluded; nothing to back up"
+        return 0
+    fi
+
+    if (( skipped > 0 )); then
+        log_info "Found ${#all_volumes[@]} unique volumes; backing up ${#kept_volumes[@]} ($skipped excluded)"
+    else
+        log_info "Found ${#kept_volumes[@]} unique volumes to backup"
+    fi
+    volume_backup_multiple "$output_dir" "${kept_volumes[@]}"
 }
 
 # Backup volumes for specific project containers

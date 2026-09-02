@@ -311,9 +311,14 @@ spinner() {
     local i=0
 
     while kill -0 "$pid" 2>/dev/null; do
-        printf "\r  ${CYAN}${spin:$i:1}${NC} %s" "$msg"
+        # Redrawing a spinner into a pipe writes a frame every 0.1s into the log
+        # instead of over itself, which buries the real output. Only animate on a
+        # terminal; under cron or ssh this loop just waits.
+        if [[ -t 1 ]]; then
+            printf "\r  ${CYAN}${spin:$i:1}${NC} %s" "$msg"
+        fi
         i=$(( (i + 1) % ${#spin} ))
         sleep 0.1
     done
-    printf "\r"
+    if [[ -t 1 ]]; then printf "\r"; fi
 }
