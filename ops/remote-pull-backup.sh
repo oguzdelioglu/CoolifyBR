@@ -90,6 +90,7 @@ RUN_ID="$(timestamp_utc)"
 RUN_LOG="$LOG_DIR/backup-$RUN_ID.log"
 LOCK_DIR="$TMP_DIR/.backup.lock"
 LOCAL_ARCHIVE_PATH=""
+EXTRA_PULL_PROBLEMS=0
 
 ensure_dir "$FILES_DIR"
 ensure_dir "$DB_DIR"
@@ -318,9 +319,11 @@ pull_extra_newest() {
         [[ -s "$dest/$(basename "$newest")" ]] || fail "Pulled extra file is empty: $newest"
     done
 
-    if (( problems > 0 )) && bool_is_true "$EXTRA_PULL_REQUIRED"; then
-        fail "$problems extra-pull pattern(s) missing or stale; the source host is not producing the dumps this backup depends on"
-    fi
+    # Record, do not fail here. Everything above this point already succeeded, and
+    # bailing now would skip the remote-archive cleanup below — leaving a 2.4 GB
+    # file on the source host every night until its disk fills. main() reports
+    # this once the run has finished tidying up.
+    EXTRA_PULL_PROBLEMS=$problems
 }
 
 write_snapshot_metadata() {
@@ -473,6 +476,10 @@ main() {
     fi
     cleanup_transferred_archives "$remote_archive" "$local_archive"
     prune_snapshots
+
+    if (( EXTRA_PULL_PROBLEMS > 0 )) && bool_is_true "$EXTRA_PULL_REQUIRED"; then
+        fail "Coolify snapshot is complete, but $EXTRA_PULL_PROBLEMS extra-pull pattern(s) were missing or stale: the source host is not producing dumps this backup depends on"
+    fi
 
     log INFO "Backup completed successfully"
     log INFO "Files snapshot: $FILES_DIR/$RUN_ID"
