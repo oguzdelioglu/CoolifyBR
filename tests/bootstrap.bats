@@ -24,9 +24,18 @@ teardown() {
 }
 
 @test "cron_line_for_job renders expected command" {
+  run cron_line_for_job /repo /cfg/job.env /backups/app 3 15 /usr/bin/bash
+  [ "$status" -eq 0 ]
+  [[ "$output" == "15 3 * * * cd /repo && CONFIG_FILE=/cfg/job.env /usr/bin/bash /repo/ops/remote-pull-backup.sh >> /backups/app/logs/cron.log 2>&1" ]]
+}
+
+@test "cron_line_for_job invokes bash by absolute path when none is given" {
+  # cron runs the line under /bin/sh with a minimal PATH. Where bash is an add-on
+  # (Entware installs it in /opt/bin on NAS appliances) a bare script name fails
+  # with "bash: not found", which is silent unless someone reads the cron log.
   run cron_line_for_job /repo /cfg/job.env /backups/app 3 15
   [ "$status" -eq 0 ]
-  [[ "$output" == "15 3 * * * cd /repo && CONFIG_FILE=/cfg/job.env /repo/ops/remote-pull-backup.sh >> /backups/app/logs/cron.log 2>&1" ]]
+  [[ "$output" == *" $(command -v bash) /repo/ops/remote-pull-backup.sh"* ]]
 }
 
 @test "render_job_config includes name and schedule" {
