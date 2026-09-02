@@ -182,6 +182,30 @@ SCHEDULE_MINUTE="${schedule_minute}"
 EOF
 }
 
+# Which file the running cron daemon actually reads varies by distro: Debian and
+# ASUSTOR ADM use /var/spool/cron/crontabs/root, Alpine/busybox images use
+# /etc/crontabs/root, RHEL uses /var/spool/cron/root. Writing a correct entry
+# into a file nothing reads is silent — the job simply never runs — so prefer a
+# crontab that already exists over creating a new one.
+detect_cron_file() {
+    local candidate
+    for candidate in /var/spool/cron/crontabs/root /etc/crontabs/root /var/spool/cron/root; do
+        [[ -f "$candidate" ]] && { printf '%s' "$candidate"; return; }
+    done
+    printf '/etc/crontabs/root'
+}
+
+# busybox crond — what appliance NASes run — treats SIGHUP as terminate, not
+# reload: signalling it kills the daemon and takes the system's own cron jobs
+# with it. Both busybox crond and cronie poll the crontab's mtime and pick up an
+# edit within a minute, so an installer needs no signal at all. Warn instead when
+# nothing is running to read the entry.
+warn_if_no_cron_daemon() {
+    if ! pidof crond >/dev/null 2>&1 && ! pidof cron >/dev/null 2>&1; then
+        echo "Warning: no cron daemon is running, so this entry will not fire." >&2
+    fi
+}
+
 cron_line_for_job() {
     local repo_dir="$1"
     local config_file="$2"

@@ -4,9 +4,9 @@ set -euo pipefail
 
 REPO_DIR="${REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 CONFIG_DIR="${CONFIG_DIR:-/root/.config/coolifybr/jobs}"
-CRON_FILE="${CRON_FILE:-/etc/crontabs/root}"
 # shellcheck source=/dev/null
 source "$REPO_DIR/scripts/lib/bootstrap.sh"
+CRON_FILE="${CRON_FILE:-$(detect_cron_file)}"
 
 if [[ ! -d "$CONFIG_DIR" ]]; then
     echo "Missing config directory: $CONFIG_DIR" >&2
@@ -25,6 +25,11 @@ touch "$CRON_FILE"
 grep -Fv "${REPO_DIR}/ops/remote-pull-backup.sh" "$CRON_FILE" | grep -Fv "${REPO_DIR}/ops/run-remote-pull-jobs.sh" > "${CRON_FILE}.tmp" || true
 
 for config in "${configs[@]}"; do
+    # Clear the four values read below before each source. They are all resolved
+    # with :- defaults, so a config that omits one would otherwise silently
+    # inherit the previous job's value and write that job's backup root or
+    # schedule into this job's cron line.
+    unset BACKUP_JOB_NAME LOCAL_BACKUP_ROOT SCHEDULE_MINUTE SCHEDULE_HOUR
     # shellcheck source=/dev/null
     source "$config"
     BACKUP_JOB_NAME="${BACKUP_JOB_NAME:-remote-coolify}"
@@ -38,8 +43,6 @@ done
 
 mv "${CRON_FILE}.tmp" "$CRON_FILE"
 
-if pidof crond >/dev/null 2>&1; then
-    kill -HUP "$(pidof crond | awk '{print $1}')"
-fi
+warn_if_no_cron_daemon
 
-echo "Installed cron entries from $CONFIG_DIR"
+echo "Installed cron entries from $CONFIG_DIR into $CRON_FILE"
