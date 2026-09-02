@@ -8,7 +8,9 @@ CONFIG_HOME_DEFAULT="${XDG_CONFIG_HOME:-/root/.config}/coolifybr"
 CONFIG_FILE_DEFAULT="$CONFIG_HOME_DEFAULT/remote-pull-backup.env"
 CONFIG_FILE="${CONFIG_FILE:-$CONFIG_FILE_DEFAULT}"
 
-export PATH="/opt/bin:/opt/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+# /usr/builtin/{bin,sbin} is where ASUSTOR ADM keeps ssh-keyscan; without it the
+# preflight fails with "Missing command: ssh-keyscan" under cron.
+export PATH="/opt/bin:/opt/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/builtin/bin:/usr/builtin/sbin:$PATH"
 
 timestamp_utc() {
     date -u +"%Y%m%dT%H%M%SZ"
@@ -72,6 +74,9 @@ DELETE_LOCAL_ARCHIVE_AFTER_EXTRACT="${DELETE_LOCAL_ARCHIVE_AFTER_EXTRACT:-false}
 RETENTION_DAILY="${RETENTION_DAILY:-7}"
 RETENTION_WEEKLY="${RETENTION_WEEKLY:-4}"
 RETENTION_MONTHLY="${RETENTION_MONTHLY:-6}"
+EXTRA_PULL_NEWEST="${EXTRA_PULL_NEWEST:-}"
+EXTRA_PULL_REQUIRED="${EXTRA_PULL_REQUIRED:-true}"
+EXTRA_PULL_MAX_AGE_HOURS="${EXTRA_PULL_MAX_AGE_HOURS:-48}"
 
 [[ -n "$REMOTE_HOST" ]] || fail "REMOTE_HOST must be set"
 
@@ -260,6 +265,64 @@ extract_snapshot() {
     rm -rf "$extract_root"
 }
 
+# Pulls data that deliberately lives OUTSIDE the Coolify archive.
+#
+# The Coolify backup tars Docker volumes, and a tar of a live Postgres data
+# directory is not a consistent backup — so the application database is excluded
+# and dumped separately by a cron on the source host. That dump then sits on the
+# very machine it is supposed to protect, which is not a backup at all. Each
+# entry here is a remote glob; the NEWEST file matching it is copied into the
+# snapshot next to everything else.
+#
+# A pattern that matches nothing, or whose newest match has gone stale, fails the
+# run when EXTRA_PULL_REQUIRED is true. Silence is the failure mode that matters:
+# a dump cron that quietly stopped looks exactly like one that is working.
+pull_extra_newest() {
+    local snapshot_id="$1"
+    [[ -n "${EXTRA_PULL_NEWEST//[[:space:]]/}" ]] || return 0
+
+    local dest="$DB_DIR/$snapshot_id/extra"
+    ensure_dir "$dest"
+
+    local now_epoch problems=0
+    now_epoch="$(date -u +%s)"
+
+    # Read the patterns up front. ssh consumes stdin, so a `while read` loop that
+    # calls ssh in its body eats the rest of its own input after the first pass.
+    local -a patterns=()
+    mapfile -t patterns <<<"$EXTRA_PULL_NEWEST"
+
+    local pattern newest mtime age_hours
+    for pattern in "${patterns[@]}"; do
+        pattern="$(printf '%s' "$pattern" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [[ -z "$pattern" || "$pattern" == \#* ]] && continue
+
+        newest="$(ssh_base "ls -1t $pattern 2>/dev/null | head -n 1" || true)"
+        if [[ -z "$newest" ]]; then
+            log WARN "No remote file matches: $pattern"
+            problems=$((problems + 1))
+            continue
+        fi
+
+        mtime="$(ssh_base "stat -c %Y '$newest' 2>/dev/null" || true)"
+        if [[ "$mtime" =~ ^[0-9]+$ ]]; then
+            age_hours=$(( (now_epoch - mtime) / 3600 ))
+            if (( age_hours > EXTRA_PULL_MAX_AGE_HOURS )); then
+                log WARN "Stale by ${age_hours}h (limit ${EXTRA_PULL_MAX_AGE_HOURS}h): $newest"
+                problems=$((problems + 1))
+            fi
+        fi
+
+        log INFO "Pulling extra file: $newest"
+        scp_from_remote "$newest" "$dest/$(basename "$newest")"
+        [[ -s "$dest/$(basename "$newest")" ]] || fail "Pulled extra file is empty: $newest"
+    done
+
+    if (( problems > 0 )) && bool_is_true "$EXTRA_PULL_REQUIRED"; then
+        fail "$problems extra-pull pattern(s) missing or stale; the source host is not producing the dumps this backup depends on"
+    fi
+}
+
 write_snapshot_metadata() {
     local snapshot_id="$1"
     local remote_archive="$2"
@@ -403,6 +466,7 @@ main() {
     scp_from_remote "$remote_archive" "$local_archive"
     collect_remote_inventory "$RUN_ID"
     extract_snapshot "$RUN_ID" "$local_archive"
+    pull_extra_newest "$RUN_ID"
     write_snapshot_metadata "$RUN_ID" "$remote_archive"
     if bool_is_true "$VERIFY_AFTER_PULL"; then
         verify_local_snapshot "$RUN_ID" "$local_archive"

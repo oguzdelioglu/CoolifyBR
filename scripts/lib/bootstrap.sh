@@ -188,6 +188,11 @@ cron_line_for_job() {
     local backup_root="$3"
     local hour="$4"
     local minute="$5"
-    printf '%s %s * * * cd %s && CONFIG_FILE=%s %s/ops/remote-pull-backup.sh >> %s/logs/cron.log 2>&1\n' \
-        "$minute" "$hour" "$repo_dir" "$config_file" "$repo_dir" "$backup_root"
+    # Call bash by absolute path. cron runs the line under /bin/sh with a minimal
+    # PATH, and on appliance NASes bash is an add-on (Entware puts it in /opt/bin)
+    # that PATH does not include — so a `#!/usr/bin/env bash` script that runs
+    # fine by hand dies under cron with "bash: not found".
+    local bash_path="${6:-$(command -v bash || echo /bin/bash)}"
+    printf '%s %s * * * cd %s && CONFIG_FILE=%s %s %s/ops/remote-pull-backup.sh >> %s/logs/cron.log 2>&1\n' \
+        "$minute" "$hour" "$repo_dir" "$config_file" "$bash_path" "$repo_dir" "$backup_root"
 }

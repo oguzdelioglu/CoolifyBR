@@ -85,5 +85,6 @@ Each job config can define its own:
 - `DELETE_REMOTE_ARCHIVE_AFTER_PULL=true` removes the remote archive after a successful pull
 - `DELETE_LOCAL_ARCHIVE_AFTER_EXTRACT=true` removes the locally pulled `.tar.gz` after extraction to save disk space
 - `REMOTE_BACKUP_EXTRA_ARGS` lets you pass extra flags to `coolify-backup.sh` on the remote host
+- `EXTRA_PULL_NEWEST` pulls the newest file matching each remote glob (one per line) into the snapshot. Use it for data kept outside the archive on purpose, such as an application database dumped separately because tarring a live Postgres data directory is not consistent. `EXTRA_PULL_REQUIRED=true` fails the run when a pattern matches nothing or its newest match is older than `EXTRA_PULL_MAX_AGE_HOURS`, so a dump cron that quietly stopped cannot pass as healthy
 - The remote server must already satisfy the normal CoolifyBR backup requirements
 - For public repositories, keep server-specific wrapper scripts and real config files only on your own infrastructure
